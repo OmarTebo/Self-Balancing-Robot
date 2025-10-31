@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+"""
+sbr_tuner.py — Minimal PID tuner + telemetry viewer for the self-balancing robot.
+Dependencies: pyserial
+  pip install pyserial
+
+Usage:
+  1. Run your ESP32 firmware (it should print lines like: "PITCH:12.34 ROLL:0.12 YAW:-3.40")
+  2. Run: python sbr_tuner.py
+  3. Connect to the correct serial port and baud (115200 default), click Connect.
+  4. Use the PID fields and "Set PID" to send: `SET PID kp ki kd\\n`
+  5. Telemetry updates the numeric readout and a small 2D tilt indicator in realtime.
+
+Notes:
+ - Designed to be simple and robust; telemetry parsing is tolerant to extra text.
+ - This is a desktop GUI; do NOT run on the ESP32 device.
+"""
+
+import threading, queue, time, sys
+import math
+import serial
+import serial.tools.list_ports
+import tkinter as tk
+from tkinter import ttk, scrolledtext, messagebox
+
+# ---------------------- Serial Background Reader ----------------------
+class SerialReader(threading.Thread):
+    def __init__(self, port, baud, line_q, stop_event):
+        super().__init__(daemon=True)
+        self.port = port
+        self.baud = baud
+        self.line_q = line_q
+        self.stop_event = stop_event
+        self.ser = None
+
+    def run(self):
+        try:
+            self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
+        except Exception as e:
+            self.line_q.put(("__error__", f"Failed open {self.port}@{self.baud}: {e}"))
+            return
+        self.line_q.put(("__info__", f"Opened {self.port} @ {self.baud}"))
+        buf = b""
+        while not self.stop_event.is_set():
+            try:
+                data = self.ser.read(256)
+                if data:
+                    buf += data
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        try:
+                            text = line.decode('utf-8', errors='ignore').strip()
+                        except:
+                            text = repr(line)
+                        self.line_q.put(("line", text))
+                else:
+                    time.sleep(0.005)
+            except Exception as e:
+                self.line_q.put(("__error__", f"Serial read error: {e}"))
+                break
+        try:
+            self.ser.close()
+        except:
+            pass
+        self.line_q.put(("__info__", "Serial thread exiting"))
+
+    def write_line(self, s):
+        if self.ser and self.ser.is_open:
+            self.ser.write((s + "\n").encode('utf-8'))
+
+# ---------------------- Simple Telemetry Parser ----------------------
+def parse_telemetry(line):
+    # Looks for tokens like PITCH:12.34 or P:12.34 or pitch=12.34
+    out = {}
+    try:
+        parts = line.replace(',', ' ').split()
+        for p in parts:
+            if ':' in p:
+                k, v = p.split(':', 1)
+            elif '=' in p:
+                k, v = p.split('=', 1)
+            else:
+                continue
+            k = k.strip().upper()
+            v = v.strip()
+            try:
+                fv = float(v)
+            except:
+                continue
+            if k.startswith("P") and "PITCH" in k or k == "PITCH":
+                out['pitch'] = fv
+            elif k.startswith("R") and "ROLL" in k or k == "ROLL":
+                out['roll'] = fv
+            elif k.startswith("Y") and "YAW" in k or k == "YAW":
+                out['yaw'] = fv
+            elif k in ("KP","KI","KD") or k=="PID":
+                # some boards may echo PID values; handle elsewhere
+                out[k.lower()] = fv
+    except Exception:
+        pass
+    return out
+
+# ---------------------- Tk GUI ----------------------
+class TunerApp:
+    def __init__(self, root):
+        self.root = root
+        root.title("SBR PID Tuner - Minimal Dashboard")
+        self.line_q = queue.Queue()
+        self.stop_event = threading.Event()
+        self.reader = None
+
+        # Top frame: connection
+        f_conn = ttk.Frame(root, padding=6)
+        f_conn.grid(row=0, column=0, sticky="ew")
+        f_conn.columnconfigure(4, weight=1)
+
+        self.port_var = tk.StringVar()
+        self.baud_var = tk.StringVar(value="115200")
+        self.kp_var = tk.StringVar(value="0.0")
+        self.ki_var = tk.StringVar(value="0.0")
+        self.kd_var = tk.StringVar(value="0.0")
+
+        ttk.Label(f_conn, text="Port:").grid(row=0, column=0)
+        self.port_cb = ttk.Combobox(f_conn, values=self.list_ports(), textvariable=self.port_var, width=18)
+        self.port_cb.grid(row=0, column=1)
+        ttk.Label(f_conn, text="Baud:").grid(row=0, column=2)
+        ttk.Entry(f_conn, textvariable=self.baud_var, width=8).grid(row=0, column=3)
+        self.btn_conn = ttk.Button(f_conn, text="Connect", command=self.toggle_connect)
+        self.btn_conn.grid(row=0, column=4, sticky="e")
+
+        # Middle frame: PID controls
+        f_pid = ttk.Frame(root, padding=6)
+        f_pid.grid(row=1, column=0, sticky="ew")
+        ttk.Label(f_pid, text="Kp").grid(row=0, column=0)
+        ttk.Entry(f_pid, textvariable=self.kp_var, width=8).grid(row=0, column=1)
+        ttk.Label(f_pid, text="Ki").grid(row=0, column=2)
+        ttk.Entry(f_pid, textvariable=self.ki_var, width=8).grid(row=0, column=3)
+        ttk.Label(f_pid, text="Kd").grid(row=0, column=4)
+        ttk.Entry(f_pid, textvariable=self.kd_var, width=8).grid(row=0, column=5)
+        ttk.Button(f_pid, text="Set PID", command=self.send_set_pid).grid(row=0, column=6)
+        ttk.Button(f_pid, text="Get PID", command=self.send_get_pid).grid(row=0, column=7)
+
+        # Telemetry frame: numbers + 2D tilt canvas
+        f_tel = ttk.Frame(root, padding=6)
+        f_tel.grid(row=2, column=0, sticky="nsew")
+        root.rowconfigure(2, weight=1)
+        f_tel.columnconfigure(1, weight=1)
+
+        # Numeric readout
+        f_vals = ttk.Frame(f_tel)
+        f_vals.grid(row=0, column=0, sticky="n")
+        ttk.Label(f_vals, text="Pitch (deg):").grid(row=0, column=0, sticky="w")
+        self.pitch_lbl = ttk.Label(f_vals, text="---")
+        self.pitch_lbl.grid(row=0, column=1, sticky="w")
+        ttk.Label(f_vals, text="Roll (deg):").grid(row=1, column=0, sticky="w")
+        self.roll_lbl = ttk.Label(f_vals, text="---")
+        self.roll_lbl.grid(row=1, column=1, sticky="w")
+        ttk.Label(f_vals, text="Yaw (deg):").grid(row=2, column=0, sticky="w")
+        self.yaw_lbl = ttk.Label(f_vals, text="---")
+        self.yaw_lbl.grid(row=2, column=1, sticky="w")
+
+        # Canvas indicator (simple rectangle representing robot body; roll rotates it; pitch shifts it)
+        self.canvas = tk.Canvas(f_tel, width=240, height=160, bg="white")
+        self.canvas.grid(row=0, column=1, sticky="nsew", padx=8, pady=8)
+        self.center = (120, 80)
+        self.rect_w = 120
+        self.rect_h = 40
+        # original rectangle points centered at origin
+        self.rect_pts = [(-self.rect_w/2, -self.rect_h/2),
+                         (self.rect_w/2, -self.rect_h/2),
+                         (self.rect_w/2, self.rect_h/2),
+                         (-self.rect_w/2, self.rect_h/2)]
+        self.rect_id = None
+
+        # Log window
+        self.log = scrolledtext.ScrolledText(root, height=8, state='disabled')
+        self.log.grid(row=3, column=0, sticky="ew", padx=6, pady=6)
+
+        # Start UI tick
+        self.last_pitch = 0.0
+        self.last_roll = 0.0
+        self.root.after(50, self.ui_tick)
+
+    def list_ports(self):
+        ports = [p.device for p in serial.tools.list_ports.comports()]
+        return ports if ports else ["COM3","/dev/ttyUSB0"]
+
+    def toggle_connect(self):
+        if self.reader and self.reader.is_alive():
+            # disconnect
+            self.stop_event.set()
+            self.btn_conn.config(text="Connect")
+            self.reader = None
+        else:
+            port = self.port_var.get()
+            try:
+                baud = int(self.baud_var.get())
+            except:
+                messagebox.showerror("Baud error", "Baud must be integer")
+                return
+            self.stop_event.clear()
+            self.line_q = queue.Queue()
+            self.reader = SerialReader(port, baud, self.line_q, self.stop_event)
+            self.reader.start()
+            self.btn_conn.config(text="Disconnect")
+            # start draining messages immediately
+            self.root.after(50, self.drain_serial)
+
+    def drain_serial(self):
+        if not self.reader:
+            return
+        while not self.line_q.empty():
+            typ, payload = self.line_q.get()
+            if typ == "line":
+                self.handle_line(payload)
+            elif typ == "__error__":
+                self.log_msg("ERROR: " + payload)
+            else:
+                self.log_msg(payload)
+        if self.reader and self.reader.is_alive():
+            self.root.after(30, self.drain_serial)
+        else:
+            self.log_msg("Disconnected")
+            self.btn_conn.config(text="Connect")
+
+    def handle_line(self, line):
+        # parse telemetry
+        parsed = parse_telemetry(line)
+        if parsed:
+            pitch = parsed.get('pitch', self.last_pitch)
+            roll = parsed.get('roll', self.last_roll)
+            yaw = parsed.get('yaw', None)
+            self.update_telemetry(pitch, roll, yaw)
+        # log everything for debug
+        self.log_msg(line, prefix="RX: ")
+
+    def update_telemetry(self, pitch, roll, yaw):
+        self.last_pitch = pitch
+        self.last_roll = roll
+        self.pitch_lbl.config(text=f"{pitch:.2f}")
+        self.roll_lbl.config(text=f"{roll:.2f}")
+        self.yaw_lbl.config(text="-" if yaw is None else f"{yaw:.2f}")
+        self.draw_indicator(pitch, roll)
+
+    def draw_indicator(self, pitch, roll):
+        # compute rotated rectangle points by roll (degrees)
+        cx, cy = self.center
+        theta = math.radians(roll)  # roll rotates around center
+        cos_t = math.cos(theta); sin_t = math.sin(theta)
+        pts = []
+        for (x,y) in self.rect_pts:
+            rx = x * cos_t - y * sin_t
+            ry = x * sin_t + y * cos_t
+            # pitch shifts vertical position slightly (for visual cue)
+            ry += (pitch * 0.6)  # scale
+            pts.append((cx + rx, cy + ry))
+        flat = [coord for p in pts for coord in p]
+        # draw
+        if self.rect_id is None:
+            self.rect_id = self.canvas.create_polygon(flat, fill="", outline="black", width=2)
+        else:
+            self.canvas.coords(self.rect_id, *flat)
+
+    def log_msg(self, s, prefix=""):
+        self.log.config(state='normal')
+        self.log.insert('end', f"{prefix}{s}\n")
+        self.log.yview('end')
+        self.log.config(state='disabled')
+
+    def send_set_pid(self):
+        try:
+            kp = float(self.kp_var.get()); ki = float(self.ki_var.get()); kd = float(self.kd_var.get())
+        except:
+            messagebox.showerror("Values", "KP/KI/KD must be numbers")
+            return
+        line = f"SET PID {kp} {ki} {kd}"
+        if self.reader and self.reader.ser and self.reader.ser.is_open:
+            self.reader.write_line(line)
+            self.log_msg("TX: " + line)
+        else:
+            messagebox.showerror("Serial", "Not connected")
+
+    def send_get_pid(self):
+        line = "GET PID"
+        if self.reader and self.reader.ser and self.reader.ser.is_open:
+            self.reader.write_line(line)
+            self.log_msg("TX: " + line)
+        else:
+            messagebox.showerror("Serial", "Not connected")
+
+    def ui_tick(self):
+        # called periodically for UI upkeep; also refresh port list affordance
+        if not (self.reader and self.reader.is_alive()):
+            # refresh ports every few seconds when disconnected
+            if int(time.time()) % 5 == 0:
+                try:
+                    self.port_cb['values'] = self.list_ports()
+                except Exception:
+                    pass
+        self.root.after(200, self.ui_tick)
+
+def main():
+    root = tk.Tk()
+    app = TunerApp(root)
+    root.protocol("WM_DELETE_WINDOW", lambda: (setattr(app, 'stop_event', app.stop_event) or app.stop_event.set() or root.destroy()))
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
