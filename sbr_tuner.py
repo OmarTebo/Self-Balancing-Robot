@@ -23,6 +23,19 @@ import serial.tools.list_ports
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 
+# --- helper: auto-detect Wokwi RFC2217 port from wokwi.toml if present ---
+def find_wokwi_port(toml_path="wokwi.toml"):
+    try:
+        txt = open(toml_path, "r", encoding="utf-8").read()
+        m = re.search(r"rfc2217ServerPort\s*=\s*(\d+)", txt)
+        if m:
+            return int(m.group(1))
+    except Exception:
+        return None
+    return None
+
+
+
 # ---------------------- Serial Background Reader ----------------------
 class SerialReader(threading.Thread):
     def __init__(self, port, baud, line_q, stop_event):
@@ -34,8 +47,13 @@ class SerialReader(threading.Thread):
         self.ser = None
 
     def run(self):
+def run(self):
         try:
-            self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
+            # allow COM paths or pyserial URL schemes (socket://, rfc2217://, etc.)
+            if isinstance(self.port, str) and "://" in self.port:
+                self.ser = serial.serial_for_url(self.port, baudrate=self.baud, timeout=0.1)
+            else:
+                self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
         except Exception as e:
             self.line_q.put(("__error__", f"Failed open {self.port}@{self.baud}: {e}"))
             return
@@ -121,8 +139,14 @@ class TunerApp:
         self.kd_var = tk.StringVar(value="0.0")
 
         ttk.Label(f_conn, text="Port:").grid(row=0, column=0)
-        self.port_cb = ttk.Combobox(f_conn, values=self.list_ports(), textvariable=self.port_var, width=18)
+        ports = self.list_ports()
+        wk = find_wokwi_port()
+        if wk:
+            ports.insert(0, f"rfc2217://localhost:{wk}")
+        self.port_cb = ttk.Combobox(f_conn, values=ports, textvariable=self.port_var, width=24)
         self.port_cb.grid(row=0, column=1)
+        if wk:
+            self.port_var.set(f"rfc2217://localhost:{wk}")
         ttk.Label(f_conn, text="Baud:").grid(row=0, column=2)
         ttk.Entry(f_conn, textvariable=self.baud_var, width=8).grid(row=0, column=3)
         self.btn_conn = ttk.Button(f_conn, text="Connect", command=self.toggle_connect)
