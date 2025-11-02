@@ -1,0 +1,357 @@
+
+*** Begin Patch
+*** Update File: src/main.cpp
+@@
++// Modified main.cpp — accumulator-based fixed-timestep catch-up loop
++#include "BotController.h"
++#include "SerialBridge.h"
++#include "Config.h"
++
++BotController controller;
++SerialBridge serialBridge;
++unsigned long lastMicros = 0;
++unsigned long accumMicros = 0;
++const unsigned long tickMicros = (1000000UL / CONTROL_LOOP_HZ);
++const int MAX_CATCHUP_TICKS = 5;
++
++void setup() {
++  Serial.begin(SERIAL_BAUD);
++  delay(50);
++  Serial.println("SBR minimal starting...");
++  controller.begin();
++  serialBridge.begin(SERIAL_BAUD);
++  lastMicros = micros();
++}
++
++void loop() {
++  unsigned long now = micros();
++  unsigned long elapsed = now - lastMicros;
++  lastMicros = now;
++  accumMicros += elapsed;
++
++  int iterations = 0;
++  // catch-up loop: run one or more fixed-size control ticks until we are up-to-date
++  while (accumMicros >= tickMicros && iterations < MAX_CATCHUP_TICKS) {
++    float dt = (tickMicros) / 1000000.0f; // seconds per fixed tick
++    controller.update(dt);
++    accumMicros -= tickMicros;
++    iterations++;
++  }
++
++  // poll serial commands without blocking
++  PIDParams p;
++  if (serialBridge.poll(p)) {
++    controller.requestPidParams((PIDParams&)p);
++    Serial.printf("Requested PID apply from serial: kp=%.4f ki=%.6f kd=%.6f\n", p.kp, p.ki, p.kd);
++  }
++
++  // respond to GET PID requests
++  if (serialBridge.consumeGetPidRequest()) {
++    controller.printCurrentPid();
++  }
++
++  // yield to background tasks
++  delay(0);
++}
++
+*** End Patch
+*** Begin Patch
+*** Update File: include/Config.h
+@@
++#pragma once
++// Use MPU6050 (definite)
++#define USE_MPU6050
++
++// Control loop
++#define CONTROL_LOOP_HZ 200
++#define CONTROL_LOOP_DT_S (1.0f / CONTROL_LOOP_HZ)
++
++// PID safe limits (angular velocity output, deg/s)
++#define PID_OUTPUT_MIN_F -1000.0f
++#define PID_OUTPUT_MAX_F 1000.0f
++
++// Steps mapping (tune later)
++#define STEPS_PER_DEGREE (3200.0f/360.0f) // ≈ 8.8888889
++
++// I2C pins (from KiCad nets)
++#define I2C_SDA_PIN 21
++#define I2C_SCL_PIN 22
++#define I2C_CLOCK_HZ 100000UL
++
++// Motor pins
++#define PITCH_STEP_PIN 4
++#define PITCH_DIR_PIN 0
++#define ROLL_STEP_PIN 2
++#define ROLL_DIR_PIN 15
++#define PITCH_EN_PIN -1
++#define ROLL_EN_PIN -1
++
++// Motor sign configuration: adjust if a motor spins the opposite direction
++#define LEFT_MOTOR_SIGN 1
++#define RIGHT_MOTOR_SIGN -1
++
++// Misc
++#define SERIAL_BAUD 115200
++
+*** End Patch
+*** Begin Patch
+*** Update File: include/PIDController.h
+@@
++#pragma once
++#include <stdint.h>
++#include "Config.h" // gives PID_OUTPUT_MIN_F and PID_OUTPUT_MAX_F
++
++// compute: setpoint and measurement in same units (degrees).
++// returns control in angular velocity (deg/s) (float).
++float compute(float setpoint, float measurement, float dt_s);
++
++class PIDController {
++public:
++  PIDController();
++  void begin(float kp=0.5f, float ki=0.0f, float kd=0.0f, float outMin=PID_OUTPUT_MIN_F, float outMax=PID_OUTPUT_MAX_F);
++  void setTunings(float kp, float ki, float kd);
++  // Convenience: set using continuous-time Ki_per_s and Kd_seconds and sample rate
++  void setTuningsContinuous(float Kp, float Ki_per_s, float Kd_seconds, float sampleRateHz);
++  // compute: setpoint and measurement in same units (degrees).
++  // returns control in angular velocity (deg/s) (float).
++  float compute(float setpoint, float measurement, float dt_s);
++  void reset();
++  // expose current tunings
++  void getTunings(float &out_kp, float &out_ki, float &out_kd);
++private:
++  float kp, ki, kd; // kp: proportional (unitless gain on degrees), ki: Ki_per_s, kd: Kd_seconds
++  float integral;
++  float prevError;
++  float derivFiltered;
++  float outMin, outMax; // outMin/outMax are in deg/s
++  // derivative filter alpha (0..1)
++  float d_alpha;
++};
++
+*** End Patch
+*** Begin Patch
+*** Update File: src/PIDController.cpp
+@@
++#include "PIDController.h"
++#include "Config.h"
++
++PIDController::PIDController() {
++  kp = ki = kd = 0.0f;
++  integral = prevError = derivFiltered = 0.0f;
++  d_alpha = 0.6f; // derivative filter
++  outMin = PID_OUTPUT_MIN_F;
++  outMax = PID_OUTPUT_MAX_F;
++}
++
++void PIDController::begin(float _kp, float _ki, float _kd, float outMin_f, float outMax_f) {
++  kp = _kp;
++  ki = _ki; // Ki_per_s (continuous)
++  kd = _kd; // Kd_seconds (continuous)
++  outMin = outMin_f;
++  outMax = outMax_f;
++  reset();
++}
++
++void PIDController::setTunings(float _kp, float _ki, float _kd) {
++  kp = _kp;
++  ki = _ki;
++  kd = _kd;
++}
++
++void PIDController::setTuningsContinuous(float Kp, float Ki_per_s, float Kd_seconds, float sampleRateHz) {
++  // keep continuous-time values; compute() is dt-aware
++  kp = Kp;
++  ki = Ki_per_s;
++  kd = Kd_seconds;
++}
++
++float PIDController::compute(float setpoint, float measurement, float dt_s) {
++  if (dt_s <= 0.0f) return 0.0f;
++  float error = setpoint - measurement; // degrees
++
++  // P term (deg * unitless kp) -> units: deg * kp (interpreted as deg/s contribution depending on kp units)
++  float P = kp * error;
++
++  // I term (continuous Ki_per_s): integral accumulates error * dt (deg * s)
++  integral += error * dt_s;
++  // anti-windup: prevent integral growing beyond what would saturate output
++  float integralLimit = 0.0f;
++  if (ki != 0.0f) {
++    // out = ki * integral when I dominates; to keep magnitude bounded, limit integral to outMax/ki
++    integralLimit = fabs(outMax / (ki != 0.0f ? ki : 1.0f));
++  } else {
++    integralLimit = 1e6f;
++  }
++  if (integral > integralLimit) integral = integralLimit;
++  if (integral < -integralLimit) integral = -integralLimit;
++  float I = ki * integral; // units: (1/s) * (deg*s) => deg
++
++  // D term: derivative of error (deg/s)
++  float d_raw = (error - prevError) / dt_s;
++  derivFiltered = d_alpha * d_raw + (1.0f - d_alpha) * derivFiltered;
++  float D = kd * derivFiltered; // kd (seconds) * (deg/s) => deg
++
++  prevError = error;
++
++  // Sum terms. Because we want output to be angular velocity (deg/s), choose kp/ki/kd accordingly when tuning.
++  float out = P + I + D;
++
++  // clamp
++  if (out > outMax) out = outMax;
++  if (out < outMin) out = outMin;
++  return out; // deg/s
++}
++
++void PIDController::reset() {
++  integral = 0.0f;
++  prevError = 0.0f;
++  derivFiltered = 0.0f;
++}
++
++void PIDController::getTunings(float &out_kp, float &out_ki, float &out_kd) {
++  out_kp = kp;
++  out_ki = ki;
++  out_kd = kd;
++}
++
+*** End Patch
+*** Begin Patch
+*** Update File: include/BotController.h
+@@
++#pragma once
++#include "PIDController.h"
++#include "MotorDriver.h"
++#include "Config.h"
++#include "IMU.h"
++#include "Types.h"
++#include "BLEHandler.h"
++
++class BotController {
++public:
++  BotController();
++  void begin();
++  // call every control tick
++  void update(float dt);
++  void requestPidParams(const PIDParams &p); // request atomic apply
++  // print current pid to Serial
++  void printCurrentPid();
++
++  MotorDriver leftMotor;  // was pitchMotor
++  MotorDriver rightMotor; // was rollMotor
++
++  // setpoint in degrees
++  float targetPitch = 0.0f;
++  float targetRoll = 0.0f;
++
++private:
++  BLEHandler ble;
++  portMUX_TYPE mux;
++  volatile bool pendingPid;
++  PIDParams pendingParams;
++  float stepsPerDegree;
++  PIDController pitchPid;
++  void applyPendingPid();
++  IMU imu;
++};
++
+*** End Patch
+*** Begin Patch
+*** Update File: src/BotController.cpp
+@@
++#include "Config.h" // for STEPS_PER_DEGREE etc.
++#include "HardwareMap.h" // optional: provides PITCH_STEP, PITCH_DIR, etc.
++#include "BotController.h"
++
++BotController::BotController() : leftMotor(PITCH_STEP, PITCH_DIR, PITCH_EN), rightMotor(ROLL_STEP, ROLL_DIR, ROLL_EN) {
++  portMUX_INITIALIZE(&mux);
++  pendingPid = false;
++  stepsPerDegree = STEPS_PER_DEGREE;
++}
++
++void BotController::begin() {
++  leftMotor.begin();
++  rightMotor.begin();
++  // init IMU with retry+recover on failure
++  if (!imu.begin()) {
++    Serial.println("IMU init failed — attempting I2C recover + retry");
++    IMU::i2cBusRecover(I2C_SDA_PIN, I2C_SCL_PIN);
++    delay(50);
++    if (!imu.begin()) {
++      Serial.println("IMU init failed after recover. Continuing without IMU.");
++    } else {
++      Serial.println("IMU init succeeded after recover.");
++    }
++  }
++  ble.begin();
++  // default PID values (Kp, Ki, Kd) in degrees/deg-s/seconds form
++  pitchPid.begin(1.0f, 0.0f, 0.01f, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
++}
++
++void BotController::update(float dt) {
++  // read imu
++  imu.update(dt);
++
++  // check for pending BLE params and apply safely
++  PIDParams p;
++  if (ble.takePending(p)) {
++    portENTER_CRITICAL(&mux);
++    pendingParams = p;
++    pendingPid = true;
++    portEXIT_CRITICAL(&mux);
++  }
++  if (pendingPid) applyPendingPid();
++
++  // compute control for pitch
++  float currentPitch = imu.getPitch();
++
++  // Non-blocking telemetry emit (throttled).
++  static unsigned long _lastTelemetryMs = 0;
++  const unsigned long _telemetryIntervalMs = 20; // 50 Hz
++  unsigned long _nowMs = millis();
++  if (_nowMs - _lastTelemetryMs >= _telemetryIntervalMs) {
++    _lastTelemetryMs = _nowMs;
++    Serial.printf("PITCH:%.2f ROLL:%.2f YAW:%.2f\n", currentPitch, imu.getRoll(), imu.getYaw());
++  }
++
++  // PID compute: returns angular velocity (deg/s)
++  float pitchOutDegPerSec = pitchPid.compute(targetPitch, currentPitch, dt); // out in deg/s
++  float pitchStepsPerSec = pitchOutDegPerSec * stepsPerDegree; // convert to steps/sec once
++
++  // apply motor sign configuration so left/right can be inverted without code edits
++  float leftSteps = pitchStepsPerSec * LEFT_MOTOR_SIGN;
++  float rightSteps = pitchStepsPerSec * RIGHT_MOTOR_SIGN;
++
++  // drive both wheels from pitch controller (non-blocking)
++  leftMotor.setSpeedStepsPerSec(leftSteps);
++  rightMotor.setSpeedStepsPerSec(rightSteps);
++
++  // non-blocking stepper service (must be called frequently)
++  leftMotor.runSpeed();
++  rightMotor.runSpeed();
++}
++
++void BotController::requestPidParams(const PIDParams &p) {
++  portENTER_CRITICAL(&mux);
++  pendingParams = p;
++  pendingPid = true;
++  portEXIT_CRITICAL(&mux);
++}
++
++void BotController::applyPendingPid() {
++  portENTER_CRITICAL(&mux);
++  if (pendingPid) {
++    // interpret pendingParams as continuous (Kp, Ki_per_s, Kd_seconds)
++    pitchPid.setTunings(pendingParams.kp, pendingParams.ki, pendingParams.kd);
++    pitchPid.reset();
++    pendingPid = false;
++  }
++  portEXIT_CRITICAL(&mux);
++}
++
++void BotController::printCurrentPid() {
++  float kp, ki, kd;
++  pitchPid.getTunings(kp, ki, kd);
++  Serial.printf("KP: %.6f KI: %.6f KD: %.6f\n", kp, ki, kd);
++}
++
+*** End Patch

@@ -1,20 +1,16 @@
-#include "Config.h"       // for STEPS_PER_DEGREE etc.
-#include "HardwareMap.h"  // optional: provides PITCH_STEP, PITCH_DIR, etc.
+﻿#include "Config.h" // for STEPS_PER_DEGREE etc.
+#include "HardwareMap.h" // optional: provides PITCH_STEP, PITCH_DIR, etc.
 #include "BotController.h"
-#include <Arduino.h>
 
-BotController::BotController()
-: pitchMotor(PITCH_STEP, PITCH_DIR, PITCH_EN),
-  rollMotor(ROLL_STEP, ROLL_DIR, ROLL_EN)
-{
+BotController::BotController() : leftMotor(PITCH_STEP, PITCH_DIR, PITCH_EN), rightMotor(ROLL_STEP, ROLL_DIR, ROLL_EN) {
   portMUX_INITIALIZE(&mux);
   pendingPid = false;
   stepsPerDegree = STEPS_PER_DEGREE;
 }
 
 void BotController::begin() {
-  pitchMotor.begin();
-  rollMotor.begin();
+  leftMotor.begin();
+  rightMotor.begin();
   // init IMU with retry+recover on failure
   if (!imu.begin()) {
     Serial.println("IMU init failed — attempting I2C recover + retry");
@@ -27,12 +23,8 @@ void BotController::begin() {
     }
   }
   ble.begin();
-
-  // default PID values (Kp, Ki, Kd)
+  // default PID values (Kp, Ki, Kd) in degrees/deg-s/seconds form
   pitchPid.begin(1.0f, 0.0f, 0.01f, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
-
-  // keep motors disabled by default in hardware (enable pin behavior depends on wiring)
-  // leave enable state to MotorDriver::begin() default
 }
 
 void BotController::update(float dt) {
@@ -52,7 +44,7 @@ void BotController::update(float dt) {
   // compute control for pitch
   float currentPitch = imu.getPitch();
 
-  // Non-blocking telemetry emit (throttled). Prints one-line: PITCH:<deg> ROLL:<deg> YAW:<deg>
+  // Non-blocking telemetry emit (throttled).
   static unsigned long _lastTelemetryMs = 0;
   const unsigned long _telemetryIntervalMs = 20; // 50 Hz
   unsigned long _nowMs = millis();
@@ -61,16 +53,21 @@ void BotController::update(float dt) {
     Serial.printf("PITCH:%.2f ROLL:%.2f YAW:%.2f\n", currentPitch, imu.getRoll(), imu.getYaw());
   }
 
-  float pitchOut = pitchPid.compute(targetPitch, currentPitch, dt); // out in steps/sec
-  float pitchSteps = pitchOut * stepsPerDegree;
+  // PID compute: returns angular velocity (deg/s)
+  float pitchOutDegPerSec = pitchPid.compute(targetPitch, currentPitch, dt); // out in deg/s
+  float pitchStepsPerSec = pitchOutDegPerSec * stepsPerDegree; // convert to steps/sec once
 
-  // drive both wheels from pitch controller. invert one side if wiring needs it.
-  pitchMotor.setSpeedStepsPerSec(pitchSteps);
-  rollMotor.setSpeedStepsPerSec(pitchSteps);
+  // apply motor sign configuration so left/right can be inverted without code edits
+  float leftSteps = pitchStepsPerSec * LEFT_MOTOR_SIGN;
+  float rightSteps = pitchStepsPerSec * RIGHT_MOTOR_SIGN;
 
-  // non-blocking stepper service
-  pitchMotor.runSpeed();
-  rollMotor.runSpeed();
+  // drive both wheels from pitch controller (non-blocking)
+  leftMotor.setSpeedStepsPerSec(leftSteps);
+  rightMotor.setSpeedStepsPerSec(rightSteps);
+
+  // non-blocking stepper service (must be called frequently)
+  leftMotor.runSpeed();
+  rightMotor.runSpeed();
 }
 
 void BotController::requestPidParams(const PIDParams &p) {
@@ -96,3 +93,5 @@ void BotController::printCurrentPid() {
   pitchPid.getTunings(kp, ki, kd);
   Serial.printf("KP: %.6f KI: %.6f KD: %.6f\n", kp, ki, kd);
 }
+
+

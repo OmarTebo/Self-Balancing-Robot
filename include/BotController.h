@@ -1,11 +1,10 @@
-#pragma once
+﻿#pragma once
 #include "PIDController.h"
 #include "MotorDriver.h"
 #include "Config.h"
 #include "IMU.h"
 #include "Types.h"
 #include "BLEHandler.h"
-#include <Arduino.h>
 
 class BotController {
 public:
@@ -17,11 +16,12 @@ public:
   // print current pid to Serial
   void printCurrentPid();
 
-  MotorDriver pitchMotor;
-  MotorDriver rollMotor;
+  MotorDriver leftMotor;  // was pitchMotor
+  MotorDriver rightMotor; // was rollMotor
+
   // setpoint in degrees
   float targetPitch = 0.0f;
-  float targetRoll  = 0.0f;
+  float targetRoll = 0.0f;
 
 private:
   BLEHandler ble;
@@ -33,3 +33,5 @@ private:
   void applyPendingPid();
   IMU imu;
 };
+
+
