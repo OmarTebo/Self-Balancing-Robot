@@ -5,6 +5,8 @@
 #include "IMU.h"
 #include "Types.h"
 #include "BLEHandler.h"
+#include <MD_MAX72xx.h>
+#include <SPI.h>
 
 class BotController {
 public:
@@ -26,6 +28,8 @@ public:
 private:
   void loadStoredPid();
   void savePidToStorage(float kp, float ki, float kd);
+  void updateDisplay();
+  void displayBitmap(uint8_t device, const uint8_t *bitmap);
   BLEHandler ble;
   portMUX_TYPE mux;
   volatile bool pendingPid;
@@ -34,6 +38,10 @@ private:
   PIDController pitchPid;
   void applyPendingPid();
   IMU imu;
+  MD_MAX72XX displayMatrix;
+  static const uint8_t PROGMEM smileyBitmap[8];
+  static const uint8_t PROGMEM sadBitmap[8];
+  unsigned long lastDisplayUpdateMs;
 };
 
 
