@@ -42,6 +42,12 @@
 #define LEFT_MOTOR_SIGN 1
 #define RIGHT_MOTOR_SIGN -1
 
+// Display pins (LED Matrix)
+#define DISPLAY_DIN_PIN 23
+#define DISPLAY_CLK_PIN 18
+#define DISPLAY_CS1_PIN 17
+#define DISPLAY_CS2_PIN 16
+
 // Misc
 #define SERIAL_BAUD 115200
 

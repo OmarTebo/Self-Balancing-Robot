@@ -2,6 +2,7 @@
 #include "BotController.h"
 #include "SerialBridge.h"
 #include "Config.h"
+#include "display.h"
 
 BotController controller;
 SerialBridge serialBridge;
@@ -14,6 +15,7 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   delay(50);
   Serial.println("SBR minimal starting...");
+  displaySetup();
   controller.begin();
   serialBridge.begin(SERIAL_BAUD);
   lastMicros = micros();
@@ -45,6 +47,9 @@ void loop() {
   if (serialBridge.consumeGetPidRequest()) {
     controller.printCurrentPid();
   }
+
+  // update display animation
+  displayUpdate();
 
   // yield to background tasks
   delay(0);
