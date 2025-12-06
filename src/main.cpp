@@ -34,9 +34,9 @@ void loop() {
     iterations++;
   }
 
-  // poll serial commands without blocking (including calibration commands)
+  // poll serial commands without blocking (including calibration and test mode commands)
   PIDParams p;
-  if (serialBridge.poll(p, &controller.getIMU())) {
+  if (serialBridge.poll(p, &controller.getIMU(), &controller)) {
     controller.requestPidParams((PIDParams&)p);
     Serial.printf("Requested PID apply from serial: kp=%.4f ki=%.6f kd=%.6f\n", p.kp, p.ki, p.kd);
   }

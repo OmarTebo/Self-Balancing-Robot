@@ -7,6 +7,9 @@
 // Forward declarations
 class IMU;
 
+// Forward declarations
+class BotController;
+
 class SerialBridge {
 public:
   SerialBridge();
@@ -14,7 +17,8 @@ public:
   // call frequently in loop to parse incoming lines
   // returns true if a new PID was requested (and fills paramsOut)
   // imu: optional pointer to IMU for calibration commands (nullptr to skip calibration)
-  bool poll(PIDParams &paramsOut, IMU *imu = nullptr);
+  // controller: optional pointer to BotController for test mode commands (nullptr to skip)
+  bool poll(PIDParams &paramsOut, IMU *imu = nullptr, BotController *controller = nullptr);
   // when asked, prints current PID values
   void printHelp();
   void printCurrent(PIDController &pid);

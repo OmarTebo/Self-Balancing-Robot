@@ -1,6 +1,7 @@
 #include "SerialBridge.h"
 #include "BLEHandler.h"
 #include "IMU.h"
+#include "BotController.h"
 #include <Arduino.h>
 
 SerialBridge::SerialBridge() {
@@ -21,12 +22,18 @@ void SerialBridge::printHelp() {
   Serial.println(F("  LOAD_CAL                 -- load calibration from NVS"));
   Serial.println(F("  CLEAR_CAL                -- clear stored calibration"));
   Serial.println(F("  GET_CAL_INFO             -- show calibration offsets"));
+  Serial.println(F("  RUN_SELF_CHECKS          -- run self-check tests"));
+  Serial.println(F("  GET_BOOT_TAG             -- show firmware boot tag"));
+  Serial.println(F("  GET_STATUS               -- show system status"));
+  Serial.println(F("  TEST_MODE_ON             -- enable test mode (disable motors)"));
+  Serial.println(F("  TEST_MODE_OFF            -- disable test mode (enable motors)"));
   Serial.println(F("  HELP"));
 }
 
 // simplistic parser: called in loop
 // imu: optional pointer for calibration commands (nullptr to skip)
-bool SerialBridge::poll(PIDParams &paramsOut, IMU *imu) {
+// controller: optional pointer for test mode commands (nullptr to skip)
+bool SerialBridge::poll(PIDParams &paramsOut, IMU *imu, BotController *controller) {
   bool gotSet = false;
   while (Serial.available()) {
     char c = (char)Serial.read();
@@ -89,6 +96,34 @@ bool SerialBridge::poll(PIDParams &paramsOut, IMU *imu) {
           imu->getCalibrationInfo(cal);
           Serial.printf("DATA CAL_INFO pitchOffset=%.6f rollOffset=%.6f magic=0x%08X version=%d\n",
                         cal.pitchOffset, cal.rollOffset, cal.magic, cal.version);
+        } else if (controller != nullptr) {
+          // Handle test mode and status commands
+          if (up == "RUN_SELF_CHECKS") {
+            controller->runSelfChecks();
+          } else if (up == "GET_BOOT_TAG") {
+            Serial.printf("DATA BOOT_TAG: %s\n", BOOT_TAG);
+          } else if (up == "GET_STATUS") {
+            // Print system status
+            Serial.println("DATA STATUS:");
+            Serial.printf("  test_mode_compile: %s\n", TEST_MODE_ENABLED ? "true" : "false");
+            Serial.printf("  test_mode_runtime: %s\n", controller->isTestMode() ? "true" : "false");
+            Serial.printf("  boot_tag: %s\n", BOOT_TAG);
+            // IMU status
+            float pitch = imu->getPitch();
+            float roll = imu->getRoll();
+            float yaw = imu->getYaw();
+            Serial.printf("  imu_pitch: %.2f\n", pitch);
+            Serial.printf("  imu_roll: %.2f\n", roll);
+            Serial.printf("  imu_yaw: %.2f\n", yaw);
+            // Calibration status
+            Serial.printf("  has_calibration: %s\n", imu->hasCalibration() ? "true" : "false");
+          } else if (up == "TEST_MODE_ON") {
+            controller->setTestMode(true);
+          } else if (up == "TEST_MODE_OFF") {
+            controller->setTestMode(false);
+          } else {
+            Serial.println("UNKNOWN CMD");
+          }
         } else {
           Serial.println("UNKNOWN CMD");
         }

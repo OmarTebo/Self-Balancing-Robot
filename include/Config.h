@@ -84,6 +84,24 @@
 #define DISPLAY_CS1_PIN 17
 #define DISPLAY_CS2_PIN 16
 
+// Test mode configuration
+// Magic number: false
+// Origin: Compile-time safety flag
+// Rationale: When true, motors are completely disabled at compile time for safe testing
+#define TEST_MODE_ENABLED false  // Compile-time test mode (disables motor control)
+
+// Magic number: false
+// Origin: Runtime test mode flag
+// Rationale: Allows toggling test mode via serial command for flexible testing
+#define TEST_MODE_RUNTIME false  // Runtime test mode flag (can be toggled via serial)
+
+// Boot tag for firmware identification
+// Magic number: "pre-pcb-1"
+// Origin: Tag name for firmware version identification
+// Rationale: Allows smoke test scripts to verify correct firmware is running
+// Usage: Printed on boot and returned by GET_BOOT_TAG command
+#define BOOT_TAG "pre-pcb-1"
+
 // Misc
 #define SERIAL_BAUD 115200
 

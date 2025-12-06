@@ -7,6 +7,9 @@
 #include "BLEHandler.h"
 #include "display.h"
 
+// Forward declaration
+class SerialBridge;
+
 class BotController {
 public:
   BotController();
@@ -16,6 +19,11 @@ public:
   void requestPidParams(const PIDParams &p); // request atomic apply
   // print current pid to Serial
   void printCurrentPid();
+  
+  // Test mode control
+  void setTestMode(bool enabled);
+  bool isTestMode() const { return testModeRuntime; }
+  void runSelfChecks(); // Run self-checks (requires SerialBridge reference)
 
   MotorDriver leftMotor;  // Left motor (rotates around x-axis, uses roll for control)
   MotorDriver rightMotor; // Right motor (rotates around x-axis, uses roll for control)
@@ -40,6 +48,7 @@ private:
   void applyPendingPid();
   IMU imu;
   Display display;
+  bool testModeRuntime; // Runtime test mode flag
 };
 
 

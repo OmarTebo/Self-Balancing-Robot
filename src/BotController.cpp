@@ -1,6 +1,7 @@
 ﻿#include "Config.h" // for STEPS_PER_DEGREE etc.
 #include "HardwareMap.h" // optional: provides LEFT_STEP, LEFT_DIR, etc.
 #include "BotController.h"
+#include "test_mode.h"
 #include <Preferences.h>
 
 BotController::BotController() : 
@@ -17,9 +18,13 @@ BotController::BotController() :
   portMUX_INITIALIZE(&mux);
   pendingPid = false;
   stepsPerDegree = STEPS_PER_DEGREE;
+  testModeRuntime = TEST_MODE_RUNTIME; // Initialize from config
 }
 
 void BotController::begin() {
+  // Print boot tag for firmware identification
+  Serial.printf("BOOT_TAG: %s\n", BOOT_TAG);
+  
   leftMotor.begin();
   rightMotor.begin();
   // init display
@@ -38,6 +43,11 @@ void BotController::begin() {
   ble.begin();
   // default PID values (Kp, Ki, Kd) in degrees/deg-s/seconds form
   loadStoredPid();
+  
+  // Print test mode status
+  if (TEST_MODE_ENABLED || testModeRuntime) {
+    Serial.println("TEST_MODE: ENABLED (motors disabled)");
+  }
 }
 
 void BotController::update(float dt) {
@@ -66,6 +76,13 @@ void BotController::update(float dt) {
   if (_nowMs - _lastTelemetryMs >= _telemetryIntervalMs) {
     _lastTelemetryMs = _nowMs;
     Serial.printf("PITCH:%.2f ROLL:%.2f YAW:%.2f\n", currentPitch, currentRoll, imu.getYaw());
+  }
+
+  // Skip motor control in test mode (compile-time or runtime)
+  if (TEST_MODE_ENABLED || testModeRuntime) {
+    // In test mode, still update display but don't drive motors
+    display.update();
+    return;
   }
 
   // PID compute: returns angular velocity (deg/s)
@@ -158,4 +175,19 @@ void BotController::savePidToStorage(float kp, float ki, float kd) {
   prefs.putFloat(PREFS_KEY_KD, kd);
   prefs.end();
   Serial.printf("Saved Roll PID to NVS: KP=%.6f KI=%.6f KD=%.6f\n", kp, ki, kd);
+}
+
+void BotController::setTestMode(bool enabled) {
+  testModeRuntime = enabled;
+  if (enabled) {
+    Serial.println("OK TEST_MODE: ON (motors disabled)");
+  } else {
+    Serial.println("OK TEST_MODE: OFF (motors enabled)");
+  }
+}
+
+void BotController::runSelfChecks() {
+  // Run self-checks using the test_mode module
+  bool allPassed = ::runSelfChecks(imu, leftMotor, rightMotor, display, ble, rollPid);
+  // Result is already printed by runSelfChecks()
 }
