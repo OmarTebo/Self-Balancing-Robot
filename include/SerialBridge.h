@@ -4,11 +4,6 @@
 #include "Types.h"
 #include "Config.h"
 
-struct SerialCmdResult {
-  bool ok;
-  String msg;
-};
-
 class SerialBridge {
 public:
   SerialBridge();

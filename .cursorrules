@@ -1,0 +1,35 @@
+# Project Preferences and Guidelines
+
+## Code Editing Rules
+
+1. **Do NOT edit the project flow itself** unless directly prompted by the user
+   - This means: don't modify core functionality, control loops, or architecture without explicit request
+   - Only make changes when the user explicitly asks for them
+
+2. **Command Line Execution**
+   - **DO NOT execute commands** without explicit user request
+   - **Exception**: When making code pivoting/refactoring changes, always git commit the changes
+   - Always ask before running build commands, test commands, or any terminal operations
+
+3. **Git Operations**
+   - When making significant code changes (refactoring, dead code removal, etc.), commit the changes
+   - Use descriptive commit messages
+   - Don't push unless explicitly asked
+
+## Current Project Context
+
+- This is an ESP32-based self-balancing robot project
+- Uses PlatformIO for build system
+- Main components: IMU, PID controllers, motor drivers, BLE, Serial bridge
+- Documentation exists in DOCUMENTATION.md
+- Dead code has been identified in DOCUMENTATION_INCONSISTENCIES.md
+
+## Next Steps
+
+- User plans to clean dead code in the next session
+- Dead code identified:
+  - Standalone `compute()` function in PIDController.h
+  - `SerialCmdResult` struct in SerialBridge.h
+  - `beginMPU()` and `beginBNO()` declarations in IMU.h
+  - Potentially unused display.h/display.cpp files
+

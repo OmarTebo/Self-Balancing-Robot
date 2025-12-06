@@ -3,50 +3,17 @@
 #include "BotController.h"
 #include <Preferences.h>
 
-// Define the number of devices (8x8 LED matrices) cascaded
-#define MAX_DEVICES 2
-// Define the type of hardware. Use FC16_HW for generic MAX7219 modules
-#define HARDWARE_TYPE MD_MAX72XX::FC16_HW
-
-// Bitmaps for smiley and sad faces
-const uint8_t PROGMEM BotController::smileyBitmap[8] = {
-  B00111100,
-  B01111110,
-  B11111111,
-  B11111111,
-  B11111111,
-  B11111111,
-  B01111110,
-  B00111100
-};
-
-const uint8_t PROGMEM BotController::sadBitmap[8] = {
-  B00001100,
-  B00011100,
-  B00111000,
-  B00110000,
-  B00110000,
-  B00111000,
-  B00011100,
-  B00001100
-};
-
-
-BotController::BotController() : leftMotor(PITCH_STEP, PITCH_DIR, PITCH_EN), rightMotor(ROLL_STEP, ROLL_DIR, ROLL_EN), displayMatrix(HARDWARE_TYPE, DISPLAY_CS1_PIN, MAX_DEVICES) {
+BotController::BotController() : leftMotor(PITCH_STEP, PITCH_DIR, PITCH_EN), rightMotor(ROLL_STEP, ROLL_DIR, ROLL_EN) {
   portMUX_INITIALIZE(&mux);
   pendingPid = false;
   stepsPerDegree = STEPS_PER_DEGREE;
-  lastDisplayUpdateMs = 0;
 }
 
 void BotController::begin() {
   leftMotor.begin();
   rightMotor.begin();
   // init display
-  displayMatrix.begin();
-  displayMatrix.control(MD_MAX72XX::INTENSITY, 2); // Set brightness (0-15)
-  displayBitmap(0, sadBitmap);
-  displayBitmap(1, smileyBitmap);
+  display.begin();
   // init IMU with retry+recover on failure
   if (!imu.begin()) {
     Serial.println("IMU init failed — attempting I2C recover + retry");
@@ -106,7 +73,7 @@ void BotController::update(float dt) {
   rightMotor.runSpeed();
 
   // update display animation (throttled)
-  updateDisplay();
+  display.update();
 }
 
 void BotController::requestPidParams(const PIDParams &p) {
@@ -166,31 +133,4 @@ void BotController::savePidToStorage(float kp, float ki, float kd) {
   prefs.putFloat(PREFS_KEY_KD, kd);
   prefs.end();
   Serial.printf("Saved PID to NVS: KP=%.6f KI=%.6f KD=%.6f\n", kp, ki, kd);
-}
-
-void BotController::updateDisplay() {
-  static bool displayState = false;
-  unsigned long now = millis();
-  
-  // Update animation every 1000ms
-  if (now - lastDisplayUpdateMs >= 1000) {
-    if (displayState) {
-      // Display smiley face on Module 0
-      displayBitmap(0, smileyBitmap);
-      // Display sad face on Module 1
-      displayBitmap(1, sadBitmap);
-    } else {
-      // Swap images
-      displayBitmap(0, sadBitmap);
-      displayBitmap(1, smileyBitmap);
-    }
-    displayState = !displayState;
-    lastDisplayUpdateMs = now;
-  }
-}
-
-void BotController::displayBitmap(uint8_t device, const uint8_t *bitmap) {
-  for (uint8_t row = 0; row < 8; row++) {
-    displayMatrix.setRow(device, row, pgm_read_byte(&bitmap[row]));
-  }
 }

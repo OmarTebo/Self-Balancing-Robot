@@ -2,10 +2,6 @@
 #include <stdint.h>
 #include "Config.h" // gives PID_OUTPUT_MIN_F and PID_OUTPUT_MAX_F
 
-// compute: setpoint and measurement in same units (degrees).
-// returns control in angular velocity (deg/s) (float).
-float compute(float setpoint, float measurement, float dt_s);
-
 class PIDController {
 public:
   PIDController();

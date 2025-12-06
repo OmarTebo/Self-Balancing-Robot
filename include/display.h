@@ -12,13 +12,20 @@
 // Define the type of hardware. Use FC16_HW for generic MAX7219 modules
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
 
-// External declaration of the MD_MAX72XX object
-extern MD_MAX72XX mx;
-
-// Function prototypes
-void displaySetup();
-void displayUpdate();
-void displayBitmap(uint8_t device, const uint8_t *bitmap);
+class Display {
+public:
+  Display();
+  void begin();
+  void update();
+  
+private:
+  void displayBitmap(uint8_t device, const uint8_t *bitmap);
+  MD_MAX72XX displayMatrix;
+  unsigned long lastDisplayUpdateMs;
+  
+  // Bitmaps for smiley and sad faces
+  static const uint8_t PROGMEM smileyBitmap[8];
+  static const uint8_t PROGMEM sadBitmap[8];
+};
 
 #endif  // DISPLAY_H
-

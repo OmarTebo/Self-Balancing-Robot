@@ -22,6 +22,4 @@ public:
 private:
   float pitch, roll, yaw;
   unsigned long lastMillis;
-  // for MPU fallback
-  void beginMPU();
 };
