@@ -124,20 +124,54 @@ This document lists inconsistencies found between `DOCUMENTATION.md` and the act
 
 ## Summary
 
+### ✅ COMPLETED
+
+**Dead code removal:**
+1. ✅ Removed standalone `compute()` function from PIDController.h
+2. ✅ Removed `SerialCmdResult` struct from SerialBridge.h
+3. ✅ Removed `beginMPU()` and `beginBNO()` declarations from IMU.h
+4. ✅ Refactored display implementation from BotController to Display class
+
+**Documentation updates:**
+1. ✅ Fixed DEFAULT_PID_KD value in documentation (0.01f → 1.0f)
+2. ✅ Added Display class documentation
+3. ✅ Updated BotController section to reflect Display class usage
+4. ✅ Added missing Config.h constants documentation
+5. ✅ Added missing implementation details (BLE, motor defaults, MAX_CATCHUP_TICKS)
+
+---
+
+### 🔴 REMAINING CODE INCONSISTENCIES (For Next Session)
+
 **Critical inconsistencies:**
-1. DEFAULT_PID_KD value mismatch (doc says 0.01, code has 1.0)
-2. Display functionality in BotController not fully documented
-3. Missing Config.h constants documentation
+1. **Motor pin naming mismatch**: Motors are named `leftMotor`/`rightMotor` but use `PITCH_STEP_PIN`/`ROLL_STEP_PIN` in constructor
+   - Current: `leftMotor(PITCH_STEP, PITCH_DIR, PITCH_EN)`
+   - Issue: Pin names suggest pitch/roll but motors are left/right
+   - Action needed: Rename pins to `LEFT_STEP_PIN`/`RIGHT_STEP_PIN` or clarify naming convention
+
+2. **Roll control not implemented**: `targetRoll` exists but roll PID is not computed
+   - Current: Only pitch control is active (`pitchPid.compute()`)
+   - Issue: Roll data is read (`imu.getRoll()`) but not used for control
+   - Action needed: Implement roll PID controller and motor control
+   - Note: User wants to use roll (x-axis tilt) data for control
 
 **Minor inconsistencies:**
-1. Dead code in headers (standalone compute() function, SerialCmdResult struct, beginMPU()/beginBNO() declarations)
-2. Unused display.h/display.cpp files (separate from BotController's display implementation)
-3. Missing implementation details (BLE UUIDs, motor defaults, etc.)
+1. MotorDriver default values not documented (acceleration: 1000.0f, max speed: 1000.0f)
+2. HardwareMap.h still uses PITCH_STEP/ROLL_STEP naming (should align with motor naming)
 
-**Recommendations:**
-1. Update DEFAULT_PID_KD documentation to match actual value (1.0f)
-2. Document display functionality in BotController section
-3. Add missing Config.h constants to documentation
-4. Remove dead code from headers (standalone compute(), SerialCmdResult struct, beginMPU()/beginBNO() declarations)
-5. Remove or document unused display.h/display.cpp files if they're obsolete
+---
+
+### 📋 NEXT SESSION PLAN
+
+**Code consistency fixes:**
+1. Rename motor pins from PITCH_STEP/ROLL_STEP to LEFT_STEP/RIGHT_STEP (or clarify naming)
+2. Implement roll PID controller
+3. Add roll control to motor output (currently only pitch controls both motors)
+4. Update HardwareMap.h to match new naming
+5. Update all references to use consistent left/right motor naming
+
+**Verification:**
+- Ensure MPU6050 roll data (x-axis tilt) is correctly used
+- Verify both motors can be controlled independently if needed
+- Test that roll control works as expected
 

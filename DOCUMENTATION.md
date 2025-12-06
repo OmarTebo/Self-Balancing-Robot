@@ -12,6 +12,7 @@ This file documents the public API in `include/` and explains the runtime behavi
 * IMU (IMU.h / IMU.cpp)
 * PIDController (PIDController.h / PIDController.cpp)
 * MotorDriver (MotorDriver.h / MotorDriver.cpp)
+* Display (display.h / display.cpp)
 * BotController (BotController.h / BotController.cpp)
 * SerialBridge (SerialBridge.h / SerialBridge.cpp)
 * BLEHandler (BLEHandler.h / BLEHandler.cpp)
@@ -28,11 +29,17 @@ Purpose: a single place for compile-time constants and pin mappings.
 Key constants and their roles:
 
 * CONTROL_LOOP_HZ — control loop frequency (typical default 200).
-* STEPS_PER_DEGREE — conversion factor from degrees to motor steps (e.g., 3200.0/360.0).
+* CONTROL_LOOP_DT_S — calculated timestep constant (1.0 / CONTROL_LOOP_HZ).
+* STEPS_PER_DEGREE — conversion factor from degrees to motor steps (e.g., 3200.0/360.0 ≈ 8.8889).
 * I2C pins: I2C_SDA_PIN, I2C_SCL_PIN, I2C_CLOCK_HZ.
-* Motor pins: PITCH_STEP_PIN, PITCH_DIR_PIN, ROLL_STEP_PIN, ROLL_DIR_PIN, and optional EN pins.
+* Motor pins: PITCH_STEP_PIN, PITCH_DIR_PIN, ROLL_STEP_PIN, ROLL_DIR_PIN, and optional EN pins (PITCH_EN_PIN, ROLL_EN_PIN).
+* Motor direction: LEFT_MOTOR_SIGN, RIGHT_MOTOR_SIGN — adjust if motors spin opposite direction (default: 1, -1).
+* Display pins: DISPLAY_DIN_PIN, DISPLAY_CLK_PIN, DISPLAY_CS1_PIN, DISPLAY_CS2_PIN — LED matrix SPI pins.
 * SERIAL_BAUD — serial monitor baud rate (e.g., 115200).
-* Default PID values (KP, KI, KD) and limits for outputs.
+* Default PID values: DEFAULT_PID_KP (1.0), DEFAULT_PID_KI (0.0), DEFAULT_PID_KD (1.0).
+* PID output limits: PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F (default: -1000.0 to 1000.0 deg/s).
+* NVS/Preferences: PREFS_NAMESPACE ("sbr2"), PREFS_KEY_KP, PREFS_KEY_KI, PREFS_KEY_KD — persistent storage keys.
+* USE_MPU6050 — feature flag (currently always defined).
 
 Usage: change values here before flashing if your wiring or mechanical gearing differs.
 
@@ -122,7 +129,7 @@ Implementation notes
 
 Example
 PIDController pid;
-pid.begin(1.0f, 0.0f, 0.01f, -1000.0f, 1000.0f);
+pid.begin(1.0f, 0.0f, 1.0f, -1000.0f, 1000.0f);
 float out_deg_per_s = pid.compute(target_deg, measured_deg, 0.005f);
 
 ---
@@ -155,6 +162,35 @@ left.begin();
 left.setSpeedStepsPerSec(100.0f); // 100 steps/sec
 left.runSpeed(); // call each tick
 
+Default settings: max speed 1000 steps/sec, acceleration 1000 steps/sec². Enable pin is active LOW.
+
+---
+
+## Display — display.h / display.cpp
+
+Public API summary
+
+* Class: Display
+* Methods:
+
+  * Display() — constructor.
+  * void begin() — initialize LED matrix display and show initial pattern.
+  * void update() — update display animation (call periodically, throttled internally).
+
+Roles & details
+
+* Manages a cascaded 8x8 LED matrix display using MD_MAX72XX library (2 devices).
+* Displays animated smiley/sad face patterns that alternate every 1000ms.
+* Uses hardware SPI with chip select on DISPLAY_CS1_PIN.
+* Brightness is set to level 2 (0-15 scale) during initialization.
+* The update() method is throttled internally to update at most once per second.
+
+Implementation notes
+
+* Bitmaps are stored in PROGMEM to conserve RAM.
+* Display uses MD_MAX72XX::FC16_HW hardware type for generic MAX7219 modules.
+* The display is initialized in BotController::begin() and updated in BotController::update().
+
 ---
 
 ## BotController — BotController.h / BotController.cpp
@@ -182,7 +218,7 @@ Public API (summary)
 
 Responsibilities & flow
 
-* begin(): initialize motors, attempt IMU init (with I2C recover on failure), initialize BLE and serial, and load stored PID from NVS/Preferences.
+* begin(): initialize motors, display, attempt IMU init (with I2C recover on failure), initialize BLE and serial, and load stored PID from NVS/Preferences.
 * update(dt): primary steps:
 
   1. imu.update(dt) to refresh angles.
@@ -190,11 +226,14 @@ Responsibilities & flow
   3. Compute pitch PID: pitchPid.compute(targetPitch, currentPitch, dt) → deg/s.
   4. Convert deg/s to steps/sec using STEPS_PER_DEGREE and apply motor signs.
   5. Set motor speeds and call runSpeed on each motor.
-* Telemetry: the controller prints formatted telemetry at a throttled rate, typically lower than the control frequency to avoid timing disruption.
+  6. Update display animation (throttled internally).
+* Telemetry: the controller prints formatted telemetry (PITCH, ROLL, YAW) at a throttled rate (~50 Hz), typically lower than the control frequency to avoid timing disruption.
 
 Notes
 
 * The conversion factor and motor sign (left/right inversion) are applied here to produce correct wheel motions.
+* Currently only pitch control is implemented; roll is read for telemetry but not used for control.
+* The Display class handles all LED matrix operations; BotController simply calls display.begin() and display.update().
 * Safety: consider automatically disabling motors when IMU health is poor.
 
 ---
@@ -244,13 +283,16 @@ Public API summary
 
 Behavior
 
-* Exposes BLE characteristics for KP, KI, KD (and possibly a control/telemetry characteristic).
+* Exposes BLE characteristics for KP, KI, KD (separate characteristics for each parameter).
+* BLE device name: "SBR-Bot".
+* Uses UUIDs for service and characteristics (defined in BLEHandler.cpp).
 * On characteristic writes, stores the values in a pending structure and sets an atomic flag.
 * takePending() is used by BotController to safely consume pending parameter updates and apply them inside the main control context.
 
 Notes
 
 * BLE operations are handled in the BLE task/context; only the takePending method touches controller state to avoid race conditions.
+* Write callbacks use mutex protection for thread-safe parameter updates.
 
 ---
 
@@ -267,6 +309,7 @@ Program flow summary
 
     * call controller.update(dt) with dt in seconds (tickDuration).
     * accumulator -= tickDuration.
+  * Limits catch-up iterations to MAX_CATCHUP_TICKS (default: 5) to prevent excessive delays.
   * Outside the fixed tick loop it polls serial and BLE for incoming commands and handles non-time-critical housekeeping.
 * This structure produces stable fixed-dt control while allowing slower tasks to run when CPU time remains.
 
