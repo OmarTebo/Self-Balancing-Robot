@@ -41,10 +41,10 @@ PATTERNS = {
 def generate_sine_pattern(t, amplitude=10.0, frequency=0.5):
     """Generate sine wave pattern for roll angle"""
     roll_angle = amplitude * math.sin(2 * math.pi * frequency * t)
-    # Convert angle to acceleration (assuming gravity)
+    # Convert angle to acceleration in g-force units (1.0 = 1g = 9.81 m/s²)
     ax = 0.0  # No acceleration in x
-    ay = 9.81 * math.sin(math.radians(roll_angle))  # Gravity component in y
-    az = 9.81 * math.cos(math.radians(roll_angle))  # Gravity component in z
+    ay = math.sin(math.radians(roll_angle))  # Gravity component in y (g-force units)
+    az = math.cos(math.radians(roll_angle))  # Gravity component in z (g-force units)
     
     # Gyroscope: derivative of angle (angular velocity)
     roll_rate = amplitude * 2 * math.pi * frequency * math.cos(2 * math.pi * frequency * t)
@@ -72,8 +72,8 @@ def generate_step_pattern(t, step_time=2.0, step_angle=15.0):
         roll_rate = 0.0  # Step has no rate after settling
     
     ax = 0.0
-    ay = 9.81 * math.sin(math.radians(roll_angle))
-    az = 9.81 * math.cos(math.radians(roll_angle))
+    ay = math.sin(math.radians(roll_angle))  # g-force units
+    az = math.cos(math.radians(roll_angle))  # g-force units
     
     return {
         'ax': ax,
@@ -94,8 +94,8 @@ def generate_noise_pattern(t, noise_level=2.0):
     roll_rate = np.random.normal(0, noise_level * 0.1)
     
     ax = np.random.normal(0, 0.1)
-    ay = 9.81 * math.sin(math.radians(roll_angle)) + np.random.normal(0, 0.05)
-    az = 9.81 * math.cos(math.radians(roll_angle)) + np.random.normal(0, 0.05)
+    ay = math.sin(math.radians(roll_angle)) + np.random.normal(0, 0.05)  # g-force units
+    az = math.cos(math.radians(roll_angle)) + np.random.normal(0, 0.05)  # g-force units
     
     return {
         'ax': ax,
@@ -115,7 +115,7 @@ def generate_static_pattern(t):
     return {
         'ax': 0.0,
         'ay': 0.0,
-        'az': 9.81,  # Gravity pointing down
+        'az': 1.0,  # Gravity pointing down (1g in g-force units)
         'gx': 0.0,
         'gy': 0.0,
         'gz': 0.0,
@@ -145,8 +145,8 @@ def generate_tilt_pattern(t, tilt_duration=3.0, max_tilt=20.0):
         roll_rate = 0.0
     
     ax = 0.0
-    ay = 9.81 * math.sin(math.radians(roll_angle))
-    az = 9.81 * math.cos(math.radians(roll_angle))
+    ay = math.sin(math.radians(roll_angle))  # g-force units
+    az = math.cos(math.radians(roll_angle))  # g-force units
     
     return {
         'ax': ax,

@@ -203,17 +203,19 @@ time,pitch,roll,yaw
 
 ### Scenario: Robot tilts 10 degrees around x-axis (roll)
 
-**Input acceleration (assuming gravity = 1g = 9.81 m/s²):**
+**Input acceleration in g-force units (1.0 = 1g = 9.81 m/s²):**
 - `ax_g = 0.0` (no acceleration in x)
-- `ay_g = 9.81 * sin(10°) = 1.70` g
-- `az_g = 9.81 * cos(10°) = 9.66` g
+- `ay_g = sin(10°) = 0.174` g (gravity component in y-axis)
+- `az_g = cos(10°) = 0.985` g (gravity component in z-axis)
 
 **Calculation:**
 ```python
-roll = atan2(1.70, 9.66) * 180 / π = 10.0°
-pitch = atan2(-0.0, sqrt(1.70² + 9.66²)) * 180 / π = 0.0°
+roll = atan2(0.174, 0.985) * 180 / π = 10.0°
+pitch = atan2(-0.0, sqrt(0.174² + 0.985²)) * 180 / π = 0.0°
 yaw = 0.0°
 ```
+
+**Note:** Acceleration values are in g-force units where 1.0 = 1g. When level, az = 1.0g (not 9.81g).
 
 **Expected CSV row:**
 ```csv
