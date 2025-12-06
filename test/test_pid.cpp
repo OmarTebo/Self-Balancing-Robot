@@ -6,18 +6,14 @@
 #include <Arduino.h>
 
 // Test fixture
-PIDController pid;
+static PIDController pid;
 
-void setUp(void) {
-    pid = PIDController();
-}
-
-void tearDown(void) {
-    // Cleanup if needed
-}
+// Note: setUp() and tearDown() are defined in main.cpp
+// This file only defines test functions
 
 // Test 1: PID initialization
 void test_pid_initialization() {
+    pid = PIDController(); // Reset fixture
     pid.begin(1.0f, 0.5f, 0.1f, -100.0f, 100.0f);
     
     float kp, ki, kd;
@@ -30,6 +26,7 @@ void test_pid_initialization() {
 
 // Test 2: PID computation with known inputs (P term only)
 void test_pid_proportional_only() {
+    pid = PIDController(); // Reset fixture
     pid.begin(2.0f, 0.0f, 0.0f, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
     pid.reset();
     
@@ -42,6 +39,7 @@ void test_pid_proportional_only() {
 
 // Test 3: PID computation with integral term
 void test_pid_integral_term() {
+    pid = PIDController(); // Reset fixture
     pid.begin(1.0f, 2.0f, 0.0f, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
     pid.reset();
     
@@ -61,6 +59,7 @@ void test_pid_integral_term() {
 
 // Test 4: PID derivative term
 void test_pid_derivative_term() {
+    pid = PIDController(); // Reset fixture
     pid.begin(1.0f, 0.0f, 1.0f, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
     pid.reset();
     
@@ -77,6 +76,7 @@ void test_pid_derivative_term() {
 
 // Test 5: Output clamping
 void test_pid_output_clamping() {
+    pid = PIDController(); // Reset fixture
     pid.begin(1000.0f, 0.0f, 0.0f, -100.0f, 100.0f); // High gain, tight limits
     pid.reset();
     
@@ -89,6 +89,7 @@ void test_pid_output_clamping() {
 
 // Test 6: Integral windup prevention
 void test_pid_integral_windup_prevention() {
+    pid = PIDController(); // Reset fixture
     pid.begin(1.0f, 10.0f, 0.0f, -50.0f, 50.0f); // High Ki, tight limits
     pid.reset();
     
@@ -108,6 +109,7 @@ void test_pid_integral_windup_prevention() {
 
 // Test 7: Reset function
 void test_pid_reset() {
+    pid = PIDController(); // Reset fixture
     pid.begin(1.0f, 1.0f, 1.0f, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
     
     // Build up some state
@@ -128,6 +130,7 @@ void test_pid_reset() {
 
 // Test 8: setTunings function
 void test_pid_set_tunings() {
+    pid = PIDController(); // Reset fixture
     pid.begin(1.0f, 0.5f, 0.1f, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
     
     pid.setTunings(2.0f, 1.0f, 0.2f);
@@ -142,6 +145,7 @@ void test_pid_set_tunings() {
 
 // Test 9: Zero dt handling
 void test_pid_zero_dt() {
+    pid = PIDController(); // Reset fixture
     pid.begin(1.0f, 1.0f, 1.0f, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
     pid.reset();
     
@@ -153,6 +157,7 @@ void test_pid_zero_dt() {
 
 // Test 10: Negative dt handling
 void test_pid_negative_dt() {
+    pid = PIDController(); // Reset fixture
     pid.begin(1.0f, 1.0f, 1.0f, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
     pid.reset();
     

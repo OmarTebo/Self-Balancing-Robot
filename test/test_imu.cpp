@@ -21,13 +21,8 @@ static float apply_calibration_offset(float angle, float offset) {
     return angle - offset;
 }
 
-void setUp(void) {
-    // Set up test fixtures
-}
-
-void tearDown(void) {
-    // Clean up
-}
+// Note: setUp() and tearDown() are defined in main.cpp
+// This file only defines test functions
 
 // Test 1: Roll calculation - level position
 void test_roll_calculation_level() {

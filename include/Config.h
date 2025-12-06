@@ -96,11 +96,12 @@
 #define TEST_MODE_RUNTIME false  // Runtime test mode flag (can be toggled via serial)
 
 // Boot tag for firmware identification
-// Magic number: "pre-pcb-1"
-// Origin: Tag name for firmware version identification
-// Rationale: Allows smoke test scripts to verify correct firmware is running
+// Format: "pcb-v2-prototype-N" where N increments with each code change during prototyping
+// Origin: PCB v2 prototyping phase identifier
+// Rationale: Allows smoke test scripts to verify correct firmware is running and track prototype iterations
 // Usage: Printed on boot and returned by GET_BOOT_TAG command
-#define BOOT_TAG "pre-pcb-1"
+// IMPORTANT: Increment the number (N) with each significant code change during prototyping phase
+#define BOOT_TAG "pcb-v2-prototype-1"
 
 // Misc
 #define SERIAL_BAUD 115200

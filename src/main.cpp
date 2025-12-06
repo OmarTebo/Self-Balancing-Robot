@@ -1,4 +1,5 @@
 ﻿// Modified main.cpp — accumulator-based fixed-timestep catch-up loop
+#ifndef PIO_UNIT_TESTING
 #include "BotController.h"
 #include "SerialBridge.h"
 #include "Config.h"
@@ -50,4 +51,4 @@ void loop() {
   delay(0);
 }
 
-
+#endif // PIO_UNIT_TESTING

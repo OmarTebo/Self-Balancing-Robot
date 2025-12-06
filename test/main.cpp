@@ -1,10 +1,10 @@
 #include <unity.h>
 #include <Arduino.h>
 
-// Include test suites (they define the test functions)
-#include "test_pid.cpp"
-#include "test_kalman.cpp"
-#include "test_imu.cpp"
+// Forward declarations of test suite functions
+extern void test_pid_suite();
+extern void test_kalman_suite();
+extern void test_imu_suite();
 
 void setUp(void) {
     // Set up test fixtures before each test
