@@ -171,7 +171,7 @@ main-code-repo/
     ├── DOCUMENTATION.md           # Technical reference
     ├── PHASE_STATUS.md            # Implementation progress
     ├── TODAYS_WORK.md             # Latest session summary
-    └── ENGINEERING_OVERVIEW.md     # This file
+    └── DEVELOPER_GUIDE.md          # This file (development guide)
 ```
 
 ---

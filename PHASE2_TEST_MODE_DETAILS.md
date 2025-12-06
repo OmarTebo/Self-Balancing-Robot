@@ -140,8 +140,8 @@ private:
 - `RUN_SELF_CHECKS` - Execute all self-checks immediately
 - `GET_BOOT_TAG` - Print firmware version/tag (for smoke test)
 - `GET_STATUS` - Get system status (IMU health, test mode, calibration status, etc.)
-- `ENABLE_TEST_MODE` - Enable test mode (disables motors)
-- `DISABLE_TEST_MODE` - Disable test mode (enables motors)
+- `TEST_MODE_ON` - Enable test mode (disables motors)
+- `TEST_MODE_OFF` - Disable test mode (enables motors)
 - `GET_TEST_MODE` - Check if test mode is active
 
 **Response format:**

@@ -76,7 +76,7 @@ Public interface summary
 * Public methods:
 
   * IMU() — constructor.
-  * bool begin() — initialize sensor, fusion, and perform startup calibration.
+  * bool begin() — initialize sensor and fusion; attempts to load saved calibration from NVS if available. Does not perform automatic calibration. Use `CALIBRATE` command to collect offsets, then `SAVE_CAL` to persist them.
   * void update(float dt) — update internal fusion; dt is seconds.
   * float getPitch() — returns pitch in degrees.
   * float getRoll() — returns roll in degrees.
@@ -86,7 +86,7 @@ Public interface summary
 
 Roles & details
 
-* The IMU wrapper uses a bundled MPU6050 driver and a sensor fusion module. On begin() it initializes the device and computes startup zero offsets by averaging several samples.
+* The IMU wrapper uses a bundled MPU6050 driver and a sensor fusion module. On begin() it initializes the device and attempts to load saved calibration offsets from NVS. Calibration must be performed explicitly using the `CALIBRATE` command (see SerialBridge commands) when the robot is level, then saved with `SAVE_CAL`.
 * update(dt) calls into the underlying driver/fusion, applies offsets, and stores filtered angles. If reads stall, the wrapper can attempt I2C bus recovery and re-init.
 * i2cBusRecover toggles SCL lines to try to free a stuck SDA and re-initializes the Wire/I2C interface.
 * Units: angles are in degrees; dt is in seconds.
@@ -333,7 +333,7 @@ Timing conventions
 ## lib/MPU6050 — notes
 
 * A bundled MPU6050 driver, fusion, and Kalman filter code are present under lib/MPU6050/.
-* The IMU wrapper delegates to this library for sensor reads and sensor fusion. Startup calibration typically averages many samples using the MPU API to derive static offsets.
+* The IMU wrapper delegates to this library for sensor reads and sensor fusion. Calibration is performed explicitly via the `CALIBRATE` command (200 samples at 5ms intervals) and stored in NVS for persistence across power cycles.
 * For filter internals and tuning, inspect MPU6050_Fusion and Kalman files in the lib folder.
 
 ---
