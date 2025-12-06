@@ -169,6 +169,9 @@ class TelemetryGrapher:
                         self.expected_pitch.append(p)
                         self.expected_roll.append(r)
                         self.expected_yaw.append(y)
+                    except (ValueError, KeyError):
+                        # Skip invalid rows
+                        continue
             print(f"Loaded {len(self.expected_times)} expected value points from {filename}")
             
             # Create expected value lines
