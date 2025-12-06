@@ -1,5 +1,6 @@
 #include "SerialBridge.h"
 #include "BLEHandler.h"
+#include "IMU.h"
 #include <Arduino.h>
 
 SerialBridge::SerialBridge() {
@@ -15,11 +16,17 @@ void SerialBridge::printHelp() {
   Serial.println(F("Commands:"));
   Serial.println(F("  SET PID <kp> <ki> <kd>   -- set PID (floats)"));
   Serial.println(F("  GET PID                  -- show current PID"));
+  Serial.println(F("  CALIBRATE                -- calibrate IMU (keep robot still)"));
+  Serial.println(F("  SAVE_CAL                 -- save calibration to NVS"));
+  Serial.println(F("  LOAD_CAL                 -- load calibration from NVS"));
+  Serial.println(F("  CLEAR_CAL                -- clear stored calibration"));
+  Serial.println(F("  GET_CAL_INFO             -- show calibration offsets"));
   Serial.println(F("  HELP"));
 }
 
 // simplistic parser: called in loop
-bool SerialBridge::poll(PIDParams &paramsOut) {
+// imu: optional pointer for calibration commands (nullptr to skip)
+bool SerialBridge::poll(PIDParams &paramsOut, IMU *imu) {
   bool gotSet = false;
   while (Serial.available()) {
     char c = (char)Serial.read();
@@ -49,8 +56,42 @@ bool SerialBridge::poll(PIDParams &paramsOut) {
       } else if (up == "GET PID" || up.startsWith("GET PID ")) {
         // request that main prints current PID (so access remains in controller)
         _getPidRequested = true;
-      } else if (up == "HELP") {
+      } else if (up == "HELP" || up == "HELP ") {
         printHelp();
+      } else if (imu != nullptr) {
+        // Handle calibration commands if IMU reference provided
+        if (up == "CALIBRATE") {
+          if (imu->calibrateBlocking()) {
+            Serial.println("OK CALIBRATE");
+          } else {
+            Serial.println("ERR CALIBRATE");
+          }
+        } else if (up == "SAVE_CAL") {
+          if (imu->saveCalibration()) {
+            // Message already printed by saveCalibration
+          } else {
+            Serial.println("ERR SAVE_CAL");
+          }
+        } else if (up == "LOAD_CAL") {
+          if (imu->loadCalibration()) {
+            Serial.println("OK LOAD_CAL: Calibration loaded");
+          } else {
+            Serial.println("ERR LOAD_CAL: No valid calibration found");
+          }
+        } else if (up == "CLEAR_CAL") {
+          if (imu->clearCalibration()) {
+            // Message already printed by clearCalibration
+          } else {
+            Serial.println("ERR CLEAR_CAL");
+          }
+        } else if (up == "GET_CAL_INFO") {
+          CalibrationData cal;
+          imu->getCalibrationInfo(cal);
+          Serial.printf("DATA CAL_INFO pitchOffset=%.6f rollOffset=%.6f magic=0x%08X version=%d\n",
+                        cal.pitchOffset, cal.rollOffset, cal.magic, cal.version);
+        } else {
+          Serial.println("UNKNOWN CMD");
+        }
       } else {
         Serial.println("UNKNOWN CMD");
       }

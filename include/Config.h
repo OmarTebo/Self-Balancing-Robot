@@ -21,6 +21,35 @@
 #define PREFS_KEY_KI   "ki"
 #define PREFS_KEY_KD   "kd"
 
+// IMU Calibration constants
+// Magic number: 0xCA1B1234
+// Origin: Chosen to verify valid calibration data in NVS
+// Rationale: Unique identifier to detect corrupted or uninitialized calibration data
+#define IMU_CALIB_MAGIC 0xCA1B1234
+
+// Magic number: 1
+// Origin: Version number for calibration data format
+// Rationale: Allows future format changes while maintaining backward compatibility
+#define IMU_CALIB_VERSION 1
+
+// Magic number: 200
+// Origin: Number of samples for calibration averaging
+// Rationale: 200 samples at 5ms delay = 1 second of averaging for stable calibration
+// Reference: Typical IMU calibration uses 1-2 seconds of data
+#define IMU_CALIB_SAMPLES 200
+
+// Magic number: 5
+// Origin: Delay between calibration samples in milliseconds
+// Rationale: 5ms delay allows sensor to settle between readings, prevents aliasing
+// Reference: MPU6050 sample rate considerations
+#define IMU_CALIB_DELAY_MS 5
+
+// NVS keys for calibration persistence
+#define PREFS_KEY_CALIB_PITCH_OFFSET "cal_pitch"
+#define PREFS_KEY_CALIB_ROLL_OFFSET  "cal_roll"
+#define PREFS_KEY_CALIB_MAGIC        "cal_magic"
+#define PREFS_KEY_CALIB_VERSION      "cal_ver"
+
 
 // Steps mapping (tune later)
 #define STEPS_PER_DEGREE (3200.0f/360.0f) // ≈ 8.8888889

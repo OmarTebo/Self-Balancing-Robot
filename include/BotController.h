@@ -19,6 +19,9 @@ public:
 
   MotorDriver leftMotor;  // Left motor (rotates around x-axis, uses roll for control)
   MotorDriver rightMotor; // Right motor (rotates around x-axis, uses roll for control)
+  
+  // Access to IMU for calibration commands
+  IMU &getIMU() { return imu; }
 
   // setpoint in degrees
   float targetPitch = 0.0f;
