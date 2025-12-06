@@ -170,6 +170,82 @@ This document tracks the status of all implementation phases for the Self-Balanc
 
 ---
 
+## ⏳ Phase 7: BLE Mobile App (HIGH PRIORITY)
+
+**Status:** ⏳ **NOT STARTED** - High priority for remote control
+
+**What needs to be done:**
+
+### Firmware Side (BLEHandler Extensions)
+1. **Add tank control BLE characteristics:**
+   - `CHAR_LEFT_MOTOR_UUID` - Left motor speed command (-100 to +100%)
+   - `CHAR_RIGHT_MOTOR_UUID` - Right motor speed command (-100 to +100%)
+   - `CHAR_CONTROL_MODE_UUID` - Control mode (AUTO/PID, MANUAL/TANK, MIXED)
+   - `CHAR_TANK_ENABLE_UUID` - Enable/disable tank control
+
+2. **Add telemetry streaming characteristics:**
+   - `CHAR_TELEMETRY_UUID` - Notify characteristic for IMU angles, motor speeds
+   - Format: JSON or structured text (e.g., `{"roll":12.5,"pitch":-1.2,"leftSpeed":50,"rightSpeed":50}`)
+
+3. **Implement control mode logic in BotController:**
+   - **AUTO mode:** Pure PID control (current behavior)
+   - **MANUAL mode:** Pure tank control (no PID)
+   - **MIXED mode:** Tank control + PID corrections (manual drive + auto balance)
+   - Mixing formula: `finalSpeed = tankCommand + pidCorrection`
+
+4. **Thread-safe command handling:**
+   - Use existing mutex pattern from PID params
+   - Add `takePendingTankControl()` method
+   - Update `BotController::update()` to check for tank commands
+
+### Mobile App Side (Flutter)
+1. **BLE connection:**
+   - Scan and connect to "SBR-Bot"
+   - Discover service UUID: `d1c6f3e0-9d3b-11ee-be56-0242ac120002`
+   - Subscribe to telemetry notifications
+
+2. **UI Components:**
+   - **Tank control joystick/pad:** Left/right motor speed sliders or dual joysticks
+   - **Control mode selector:** AUTO / MANUAL / MIXED toggle
+   - **Telemetry display:** Real-time roll/pitch/yaw, motor speeds
+   - **PID tuning panel:** Extend existing BLE PID characteristics
+   - **Status indicators:** Connection status, battery (if added later)
+
+3. **Features:**
+   - Real-time telemetry plotting (optional)
+   - PID parameter adjustment (already supported via BLE)
+   - Emergency stop button
+   - Calibration trigger (via serial bridge or new BLE command)
+
+**Files to Create/Modify:**
+- `include/BLEHandler.h` - Add tank control methods
+- `src/BLEHandler.cpp` - Add tank control characteristics and callbacks
+- `include/BotController.h` - Add control mode enum and tank control state
+- `src/BotController.cpp` - Implement control mode logic and mixing
+- `mobile_app/` (new directory) - Flutter app source code
+  - `lib/main.dart` - App entry point
+  - `lib/ble/ble_service.dart` - BLE communication
+  - `lib/ui/tank_control.dart` - Tank control UI
+  - `lib/ui/telemetry_view.dart` - Telemetry display
+  - `lib/ui/pid_tuning.dart` - PID parameter adjustment
+
+**Control Mode Details:**
+- **AUTO (PID only):** `motorSpeed = pidOutput` (current behavior)
+- **MANUAL (Tank only):** `motorSpeed = tankCommand` (no PID)
+- **MIXED (Tank + PID):** `motorSpeed = tankCommand + pidCorrection`
+  - User provides base speed via tank controls
+  - PID adds corrections to maintain balance
+  - Example: User drives forward at 50%, PID adds ±5% to keep balanced
+
+**Priority:** **HIGH** - Enables remote control and monitoring, critical for testing and operation
+
+**Dependencies:** 
+- Phase 1 (Calibration) - App can trigger calibration
+- Phase 2 (Test Mode) - App can enable/disable test mode
+- Existing BLEHandler infrastructure
+
+---
+
 ## 📊 Overall Progress Summary
 
 | Phase | Status | Priority | Completion |
@@ -180,8 +256,9 @@ This document tracks the status of all implementation phases for the Self-Balanc
 | Phase 4: Unit Tests | ✅ Complete | High | 100% |
 | Phase 5: Magic Numbers | ⏳ Partial | Low | 30% |
 | Phase 6: Smoke Test | ⏳ Pending | Medium | 0% |
+| Phase 7: BLE Mobile App | ⏳ Pending | **HIGH** | 0% |
 
-**Overall Completion:** ~65% (3 of 6 phases complete, 2 partially complete)
+**Overall Completion:** ~60% (3 of 7 phases complete, 2 partially complete)
 
 ---
 
