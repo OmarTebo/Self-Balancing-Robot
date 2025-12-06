@@ -54,8 +54,10 @@ void BotController::update(float dt) {
   }
   if (pendingPid) applyPendingPid();
 
-  // compute control for pitch
-  float currentPitch = imu.getPitch();
+  // Get current roll angle (x-axis rotation) - primary control axis
+  // Both motor shafts are parallel to x-axis, so both motors use roll for control
+  float currentRoll = imu.getRoll();
+  float currentPitch = imu.getPitch(); // Optional, kept for future use if MPU6050 rotated
 
   // Non-blocking telemetry emit (throttled).
   static unsigned long _lastTelemetryMs = 0;
@@ -63,13 +65,13 @@ void BotController::update(float dt) {
   unsigned long _nowMs = millis();
   if (_nowMs - _lastTelemetryMs >= _telemetryIntervalMs) {
     _lastTelemetryMs = _nowMs;
-    Serial.printf("PITCH:%.2f ROLL:%.2f YAW:%.2f\n", currentPitch, imu.getRoll(), imu.getYaw());
+    Serial.printf("PITCH:%.2f ROLL:%.2f YAW:%.2f\n", currentPitch, currentRoll, imu.getYaw());
   }
 
   // PID compute: returns angular velocity (deg/s)
-  // Note: Both motors rotate around x-axis, so roll is primary control axis
+  // Both motors rotate around x-axis, so roll is the primary control axis
   // Pitch is optional (if MPU6050 rotated, but currently not used)
-  float rollOutDegPerSec = pitchPid.compute(targetPitch, currentPitch, dt); // out in deg/s
+  float rollOutDegPerSec = rollPid.compute(targetRoll, currentRoll, dt); // out in deg/s
   float rollStepsPerSec = rollOutDegPerSec * stepsPerDegree; // convert to steps/sec once
 
   // Calculate base motor signs with invert flags
@@ -81,7 +83,8 @@ void BotController::update(float dt) {
   float leftSteps = rollStepsPerSec * leftSign;
   float rightSteps = rollStepsPerSec * rightSign;
 
-  // drive both wheels from pitch controller (non-blocking)
+  // drive both wheels from roll controller (non-blocking)
+  // Both motors respond to roll (x-axis rotation) together
   leftMotor.setSpeedStepsPerSec(leftSteps);
   rightMotor.setSpeedStepsPerSec(rightSteps);
 
@@ -104,8 +107,9 @@ void BotController::applyPendingPid() {
   portENTER_CRITICAL(&mux);
   if (pendingPid) {
     // interpret pendingParams as continuous (Kp, Ki_per_s, Kd_seconds)
-    pitchPid.setTunings(pendingParams.kp, pendingParams.ki, pendingParams.kd);
-    pitchPid.reset();
+    // Apply to roll PID (primary controller for x-axis rotation)
+    rollPid.setTunings(pendingParams.kp, pendingParams.ki, pendingParams.kd);
+    rollPid.reset();
     // persist immediately so values survive power cycles
     savePidToStorage(pendingParams.kp, pendingParams.ki, pendingParams.kd);
     pendingPid = false;
@@ -115,8 +119,8 @@ void BotController::applyPendingPid() {
 
 void BotController::printCurrentPid() {
   float kp, ki, kd;
-  pitchPid.getTunings(kp, ki, kd);
-  Serial.printf("KP: %.6f KI: %.6f KD: %.6f\n", kp, ki, kd);
+  rollPid.getTunings(kp, ki, kd);
+  Serial.printf("Roll PID - KP: %.6f KI: %.6f KD: %.6f\n", kp, ki, kd);
 }
 
 void BotController::loadStoredPid() {
@@ -124,7 +128,9 @@ void BotController::loadStoredPid() {
   // open namespace for read/write
   if (!prefs.begin(PREFS_NAMESPACE, false)) {
     Serial.println("Prefs begin failed - using defaults");
-    // use compile-time defaults
+    // use compile-time defaults for roll PID (primary controller)
+    rollPid.begin(DEFAULT_PID_KP, DEFAULT_PID_KI, DEFAULT_PID_KD, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
+    // Initialize pitch PID with same defaults (optional, for future use)
     pitchPid.begin(DEFAULT_PID_KP, DEFAULT_PID_KI, DEFAULT_PID_KD, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
     return;
   }
@@ -135,7 +141,9 @@ void BotController::loadStoredPid() {
 
   prefs.end();
 
-  Serial.printf("Loaded PID from NVS: KP=%.6f KI=%.6f KD=%.6f\n", kp, ki, kd);
+  Serial.printf("Loaded Roll PID from NVS: KP=%.6f KI=%.6f KD=%.6f\n", kp, ki, kd);
+  rollPid.begin(kp, ki, kd, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
+  // Initialize pitch PID with same values (optional, for future use)
   pitchPid.begin(kp, ki, kd, PID_OUTPUT_MIN_F, PID_OUTPUT_MAX_F);
 }
 
@@ -149,5 +157,5 @@ void BotController::savePidToStorage(float kp, float ki, float kd) {
   prefs.putFloat(PREFS_KEY_KI, ki);
   prefs.putFloat(PREFS_KEY_KD, kd);
   prefs.end();
-  Serial.printf("Saved PID to NVS: KP=%.6f KI=%.6f KD=%.6f\n", kp, ki, kd);
+  Serial.printf("Saved Roll PID to NVS: KP=%.6f KI=%.6f KD=%.6f\n", kp, ki, kd);
 }

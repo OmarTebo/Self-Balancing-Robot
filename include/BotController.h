@@ -32,7 +32,8 @@ private:
   volatile bool pendingPid;
   PIDParams pendingParams;
   float stepsPerDegree;
-  PIDController pitchPid;
+  PIDController rollPid;  // Primary controller (both motors rotate around x-axis)
+  PIDController pitchPid; // Optional controller (if MPU6050 rotated, currently unused)
   void applyPendingPid();
   IMU imu;
   Display display;
