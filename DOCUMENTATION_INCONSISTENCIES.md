@@ -141,23 +141,28 @@ This document lists inconsistencies found between `DOCUMENTATION.md` and the act
 
 ---
 
-### 🔴 REMAINING CODE INCONSISTENCIES (For Next Session)
+### ✅ COMPLETED (Latest Session)
 
-**Critical inconsistencies:**
-1. **Motor pin naming mismatch**: Motors are named `leftMotor`/`rightMotor` but use `PITCH_STEP_PIN`/`ROLL_STEP_PIN` in constructor
-   - Current: `leftMotor(PITCH_STEP, PITCH_DIR, PITCH_EN)`
-   - Issue: Pin names suggest pitch/roll but motors are left/right
-   - Action needed: Rename pins to `LEFT_STEP_PIN`/`RIGHT_STEP_PIN` or clarify naming convention
+**Code consistency fixes:**
+1. ✅ Motor pin renaming: PITCH_STEP/ROLL_STEP → LEFT_STEP/RIGHT_STEP
+2. ✅ Motor invert/swap flags added (SWAP_MOTORS, INVERT_LEFT_MOTOR, INVERT_RIGHT_MOTOR)
+3. ✅ Roll control implemented: rollPid controller added and used for motor control
+4. ✅ HardwareMap.h updated with new pin names
+5. ✅ All references updated to use consistent left/right motor naming
 
-2. **Roll control not implemented**: `targetRoll` exists but roll PID is not computed
-   - Current: Only pitch control is active (`pitchPid.compute()`)
-   - Issue: Roll data is read (`imu.getRoll()`) but not used for control
-   - Action needed: Implement roll PID controller and motor control
-   - Note: User wants to use roll (x-axis tilt) data for control
+---
 
-**Minor inconsistencies:**
-1. MotorDriver default values not documented (acceleration: 1000.0f, max speed: 1000.0f)
-2. HardwareMap.h still uses PITCH_STEP/ROLL_STEP naming (should align with motor naming)
+### 🔴 REMAINING ITEMS (If Any)
+
+**All major inconsistencies resolved!** The codebase now has:
+- ✅ Consistent left/right motor naming
+- ✅ Roll control implemented (primary control axis)
+- ✅ Motor invert/swap flags for software testing
+- ✅ All documentation updated
+
+**Optional future enhancements:**
+- Consider separate PID storage for roll vs pitch (currently shared)
+- Consider independent motor control (currently both motors use same roll signal)
 
 ---
 

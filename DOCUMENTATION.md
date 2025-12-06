@@ -228,7 +228,7 @@ Responsibilities & flow
 
   1. imu.update(dt) to refresh angles.
   2. Apply pending PID params from BLE/Serial atomically and persist them.
-  3. Compute PID control (currently using pitch PID, but motors physically respond to roll/x-axis rotation).
+  3. Compute roll PID: rollPid.compute(targetRoll, currentRoll, dt) → deg/s (primary control for x-axis rotation).
   4. Convert deg/s to steps/sec using STEPS_PER_DEGREE and apply motor signs (with invert flags).
   5. Set motor speeds and call runSpeed on each motor.
   6. Update display animation (throttled internally).
@@ -236,8 +236,10 @@ Responsibilities & flow
 
 Notes
 
-* Both motor shafts are parallel to the x-axis, so both motors use roll (x-axis rotation) for physical control.
-* Pitch control is optional (useful if MPU6050 is rotated, but currently not the case).
+* Both motor shafts are parallel to the x-axis, so both motors use roll (x-axis rotation) for control.
+* Roll PID controller (rollPid) is the primary controller used for motor control.
+* Pitch PID controller (pitchPid) exists for optional future use (if MPU6050 is rotated, but currently not the case).
+* Both motors respond to roll together (same control signal applied to both).
 * Motor direction can be inverted individually using INVERT_LEFT_MOTOR and INVERT_RIGHT_MOTOR flags in Config.h.
 * Motors can be swapped using SWAP_MOTORS flag for testing without hardware rewiring.
 * The conversion factor and motor sign (left/right inversion) are applied here to produce correct wheel motions.
@@ -339,10 +341,12 @@ Timing conventions
 ## Examples & snippets
 
 Converting PID output (deg/s) to stepper speeds (steps/sec)
-float pitchOutDegPerSec = pitchPid.compute(targetPitch, currentPitch, dt);
-float pitchStepsPerSec = pitchOutDegPerSec * STEPS_PER_DEGREE;
-leftMotor.setSpeedStepsPerSec(pitchStepsPerSec * LEFT_MOTOR_SIGN);
-rightMotor.setSpeedStepsPerSec(pitchStepsPerSec * RIGHT_MOTOR_SIGN);
+float rollOutDegPerSec = rollPid.compute(targetRoll, currentRoll, dt);
+float rollStepsPerSec = rollOutDegPerSec * STEPS_PER_DEGREE;
+float leftSign = LEFT_MOTOR_SIGN * (INVERT_LEFT_MOTOR ? -1.0f : 1.0f);
+float rightSign = RIGHT_MOTOR_SIGN * (INVERT_RIGHT_MOTOR ? -1.0f : 1.0f);
+leftMotor.setSpeedStepsPerSec(rollStepsPerSec * leftSign);
+rightMotor.setSpeedStepsPerSec(rollStepsPerSec * rightSign);
 
 Serial command example
 SET PID 1.000 0.000 0.010
