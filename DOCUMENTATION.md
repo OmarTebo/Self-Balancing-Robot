@@ -32,8 +32,11 @@ Key constants and their roles:
 * CONTROL_LOOP_DT_S — calculated timestep constant (1.0 / CONTROL_LOOP_HZ).
 * STEPS_PER_DEGREE — conversion factor from degrees to motor steps (e.g., 3200.0/360.0 ≈ 8.8889).
 * I2C pins: I2C_SDA_PIN, I2C_SCL_PIN, I2C_CLOCK_HZ.
-* Motor pins: PITCH_STEP_PIN, PITCH_DIR_PIN, ROLL_STEP_PIN, ROLL_DIR_PIN, and optional EN pins (PITCH_EN_PIN, ROLL_EN_PIN).
-* Motor direction: LEFT_MOTOR_SIGN, RIGHT_MOTOR_SIGN — adjust if motors spin opposite direction (default: 1, -1).
+* Motor pins: LEFT_STEP_PIN, LEFT_DIR_PIN, RIGHT_STEP_PIN, RIGHT_DIR_PIN, and optional EN pins (LEFT_EN_PIN, RIGHT_EN_PIN).
+* Motor direction: LEFT_MOTOR_SIGN, RIGHT_MOTOR_SIGN — base direction signs (default: 1, -1).
+* Motor invert flags: INVERT_LEFT_MOTOR, INVERT_RIGHT_MOTOR — set to true to invert individual motor direction in software.
+* Motor swap: SWAP_MOTORS — set to true to swap left/right motor pins (useful for testing without rewiring).
+* Note: Both motor shafts are parallel to x-axis, so both motors use roll (x-axis rotation) for control. Pitch is optional if MPU6050 is rotated.
 * Display pins: DISPLAY_DIN_PIN, DISPLAY_CLK_PIN, DISPLAY_CS1_PIN, DISPLAY_CS2_PIN — LED matrix SPI pins.
 * SERIAL_BAUD — serial monitor baud rate (e.g., 115200).
 * Default PID values: DEFAULT_PID_KP (1.0), DEFAULT_PID_KI (0.0), DEFAULT_PID_KD (1.0).
@@ -61,7 +64,7 @@ Role: used to transfer PID sets between BLE, serial and the controller and to st
 
 Purpose: thin mapping of config macros to named constants used in constructors and object initialization.
 
-Role: keeps code readable by centralizing pin names (e.g., PITCH_STEP → PITCH_STEP_PIN).
+Role: keeps code readable by centralizing pin names (e.g., LEFT_STEP → LEFT_STEP_PIN).
 
 ---
 
@@ -157,10 +160,12 @@ Roles & behaviour
 * The driver code handles conversion of angular velocity to step rates elsewhere (BotController).
 
 Example usage
-MotorDriver left(PITCH_STEP, PITCH_DIR, PITCH_EN);
+MotorDriver left(LEFT_STEP, LEFT_DIR, LEFT_EN);
 left.begin();
 left.setSpeedStepsPerSec(100.0f); // 100 steps/sec
 left.runSpeed(); // call each tick
+
+Motor direction can be inverted in software using INVERT_LEFT_MOTOR or INVERT_RIGHT_MOTOR flags in Config.h, or motors can be swapped using SWAP_MOTORS flag.
 
 Default settings: max speed 1000 steps/sec, acceleration 1000 steps/sec². Enable pin is active LOW.
 
@@ -223,16 +228,19 @@ Responsibilities & flow
 
   1. imu.update(dt) to refresh angles.
   2. Apply pending PID params from BLE/Serial atomically and persist them.
-  3. Compute pitch PID: pitchPid.compute(targetPitch, currentPitch, dt) → deg/s.
-  4. Convert deg/s to steps/sec using STEPS_PER_DEGREE and apply motor signs.
+  3. Compute PID control (currently using pitch PID, but motors physically respond to roll/x-axis rotation).
+  4. Convert deg/s to steps/sec using STEPS_PER_DEGREE and apply motor signs (with invert flags).
   5. Set motor speeds and call runSpeed on each motor.
   6. Update display animation (throttled internally).
 * Telemetry: the controller prints formatted telemetry (PITCH, ROLL, YAW) at a throttled rate (~50 Hz), typically lower than the control frequency to avoid timing disruption.
 
 Notes
 
+* Both motor shafts are parallel to the x-axis, so both motors use roll (x-axis rotation) for physical control.
+* Pitch control is optional (useful if MPU6050 is rotated, but currently not the case).
+* Motor direction can be inverted individually using INVERT_LEFT_MOTOR and INVERT_RIGHT_MOTOR flags in Config.h.
+* Motors can be swapped using SWAP_MOTORS flag for testing without hardware rewiring.
 * The conversion factor and motor sign (left/right inversion) are applied here to produce correct wheel motions.
-* Currently only pitch control is implemented; roll is read for telemetry but not used for control.
 * The Display class handles all LED matrix operations; BotController simply calls display.begin() and display.update().
 * Safety: consider automatically disabling motors when IMU health is poor.
 

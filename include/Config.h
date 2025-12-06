@@ -30,17 +30,24 @@
 #define I2C_SCL_PIN 22
 #define I2C_CLOCK_HZ 100000UL
 
-// Motor pins
-#define PITCH_STEP_PIN 4
-#define PITCH_DIR_PIN 0
-#define ROLL_STEP_PIN 2
-#define ROLL_DIR_PIN 15
-#define PITCH_EN_PIN -1
-#define ROLL_EN_PIN -1
+// Motor pins (both motors rotate around x-axis, using roll for control)
+#define LEFT_STEP_PIN 4
+#define LEFT_DIR_PIN 0
+#define RIGHT_STEP_PIN 2
+#define RIGHT_DIR_PIN 15
+#define LEFT_EN_PIN -1
+#define RIGHT_EN_PIN -1
 
 // Motor sign configuration: adjust if a motor spins the opposite direction
+// These can be changed in software for testing without rewiring hardware
 #define LEFT_MOTOR_SIGN 1
 #define RIGHT_MOTOR_SIGN -1
+
+// Motor swap/invert flags: set to true to swap left/right motors or invert individually
+// Useful for testing without hardware changes
+#define SWAP_MOTORS false  // If true, left motor uses right pins and vice versa
+#define INVERT_LEFT_MOTOR false  // If true, invert left motor direction sign
+#define INVERT_RIGHT_MOTOR false  // If true, invert right motor direction sign
 
 // Display pins (LED Matrix)
 #define DISPLAY_DIN_PIN 23

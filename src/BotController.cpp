@@ -1,9 +1,19 @@
 ﻿#include "Config.h" // for STEPS_PER_DEGREE etc.
-#include "HardwareMap.h" // optional: provides PITCH_STEP, PITCH_DIR, etc.
+#include "HardwareMap.h" // optional: provides LEFT_STEP, LEFT_DIR, etc.
 #include "BotController.h"
 #include <Preferences.h>
 
-BotController::BotController() : leftMotor(PITCH_STEP, PITCH_DIR, PITCH_EN), rightMotor(ROLL_STEP, ROLL_DIR, ROLL_EN) {
+BotController::BotController() : 
+  leftMotor(
+    SWAP_MOTORS ? RIGHT_STEP : LEFT_STEP,
+    SWAP_MOTORS ? RIGHT_DIR : LEFT_DIR,
+    SWAP_MOTORS ? RIGHT_EN : LEFT_EN
+  ),
+  rightMotor(
+    SWAP_MOTORS ? LEFT_STEP : RIGHT_STEP,
+    SWAP_MOTORS ? LEFT_DIR : RIGHT_DIR,
+    SWAP_MOTORS ? LEFT_EN : RIGHT_EN
+  ) {
   portMUX_INITIALIZE(&mux);
   pendingPid = false;
   stepsPerDegree = STEPS_PER_DEGREE;
@@ -57,12 +67,19 @@ void BotController::update(float dt) {
   }
 
   // PID compute: returns angular velocity (deg/s)
-  float pitchOutDegPerSec = pitchPid.compute(targetPitch, currentPitch, dt); // out in deg/s
-  float pitchStepsPerSec = pitchOutDegPerSec * stepsPerDegree; // convert to steps/sec once
+  // Note: Both motors rotate around x-axis, so roll is primary control axis
+  // Pitch is optional (if MPU6050 rotated, but currently not used)
+  float rollOutDegPerSec = pitchPid.compute(targetPitch, currentPitch, dt); // out in deg/s
+  float rollStepsPerSec = rollOutDegPerSec * stepsPerDegree; // convert to steps/sec once
 
+  // Calculate base motor signs with invert flags
+  // This allows software testing without hardware rewiring
+  float leftSign = LEFT_MOTOR_SIGN * (INVERT_LEFT_MOTOR ? -1.0f : 1.0f);
+  float rightSign = RIGHT_MOTOR_SIGN * (INVERT_RIGHT_MOTOR ? -1.0f : 1.0f);
+  
   // apply motor sign configuration so left/right can be inverted without code edits
-  float leftSteps = pitchStepsPerSec * LEFT_MOTOR_SIGN;
-  float rightSteps = pitchStepsPerSec * RIGHT_MOTOR_SIGN;
+  float leftSteps = rollStepsPerSec * leftSign;
+  float rightSteps = rollStepsPerSec * rightSign;
 
   // drive both wheels from pitch controller (non-blocking)
   leftMotor.setSpeedStepsPerSec(leftSteps);

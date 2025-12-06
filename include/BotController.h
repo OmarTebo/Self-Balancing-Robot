@@ -17,8 +17,8 @@ public:
   // print current pid to Serial
   void printCurrentPid();
 
-  MotorDriver leftMotor;  // was pitchMotor
-  MotorDriver rightMotor; // was rollMotor
+  MotorDriver leftMotor;  // Left motor (rotates around x-axis, uses roll for control)
+  MotorDriver rightMotor; // Right motor (rotates around x-axis, uses roll for control)
 
   // setpoint in degrees
   float targetPitch = 0.0f;
