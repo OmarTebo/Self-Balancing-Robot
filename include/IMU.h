@@ -24,5 +24,4 @@ private:
   unsigned long lastMillis;
   // for MPU fallback
   void beginMPU();
-  void beginBNO();
 };
