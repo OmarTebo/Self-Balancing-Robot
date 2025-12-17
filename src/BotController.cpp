@@ -40,7 +40,7 @@ void BotController::begin() {
       Serial.println("IMU init succeeded after recover.");
     }
   }
-  ble.begin();
+  // ble.begin(); // Disabled for now to avoid radio interference during DLPF runtime tuning. Re-enable if needed.
   // default PID values (Kp, Ki, Kd) in degrees/deg-s/seconds form
   loadStoredPid();
   

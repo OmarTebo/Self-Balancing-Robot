@@ -4,6 +4,15 @@
 #include "BotController.h"
 #include <Arduino.h>
 
+// Application-level DLPF control helpers defined in IMU.cpp.
+// We forward-declare them here instead of touching IMU.h to keep the public
+// header surface stable. To revert, remove these declarations and the related
+// command handling branches below.
+extern bool configureDLPF(uint8_t dlpf_cfg, uint8_t smplrt_div, bool force);
+extern bool getDLPFConfig(uint8_t &dlpf_cfg, uint8_t &smplrt_div);
+extern const char *getImuDlpfLastError();
+extern bool saveImuDlpfConfigToNvs(uint8_t dlpf_cfg, uint8_t smplrt_div);
+
 SerialBridge::SerialBridge() {
   _buffer = "";
   _getPidRequested = false;
@@ -27,7 +36,136 @@ void SerialBridge::printHelp() {
   Serial.println(F("  GET_STATUS               -- show system status"));
   Serial.println(F("  TEST_MODE_ON             -- enable test mode (disable motors)"));
   Serial.println(F("  TEST_MODE_OFF            -- disable test mode (enable motors)"));
+  Serial.println(F("  IMU:GET DLPF             -- get MPU6050 DLPF/SMPLRT_DIV"));
+  Serial.println(F("  IMU:SET DLPF <cfg> [div] -- set DLPF/SMPLRT_DIV (safe, motors off)"));
+  Serial.println(F("  IMU:APPLY DLPF <cfg> [div] [FORCE] -- apply DLPF even if motors on"));
+  Serial.println(F("  IMU:GET LASTERR          -- get last DLPF config error"));
+  Serial.println(F("  IMU:HELP                 -- list IMU DLPF commands"));
   Serial.println(F("  HELP"));
+}
+
+// Helper: compute default SMPLRT_DIV for a desired DLPF setting if the user
+// omits it. For DLPF enabled (cfg != 0), use 4 => 200 Hz from 1 kHz. For
+// DLPF disabled (cfg == 0), use 39 => 200 Hz from 8 kHz.
+static uint8_t defaultSmplrtForDlpf(uint8_t dlpf_cfg) {
+  if ((dlpf_cfg & 0x07u) == 0) {
+    return 39; // 8 kHz / (1 + 39) = 200 Hz
+  }
+  return 4; // 1 kHz / (1 + 4) = 200 Hz
+}
+
+// Helper: approximate delay string for replies. Matches IMU.cpp mapping.
+static const char *dlpfDelayMsStringReply(uint8_t cfg) {
+  switch (cfg & 0x07) {
+    case 0: return "0.98";
+    case 1: return "1.90";
+    case 2: return "2.80";
+    case 3: return "4.90";
+    case 4: return "8.30";
+    case 5: return "13.40";
+    case 6: return "18.60";
+    case 7: return "approx";
+    default: return "approx";
+  }
+}
+
+// Handle IMU:... commands. All responses are single-line and start with
+// OK or ERR for easy machine parsing.
+static void handleImuDlpfCommand(const String &line, const String &up, IMU *imu, BotController *controller) {
+  (void)imu; // currently unused, kept for future extension
+  (void)controller;
+
+  if (up == "IMU:HELP") {
+    Serial.println("OK IMU:GET DLPF");
+    Serial.println("OK IMU:SET DLPF <cfg> [div]");
+    Serial.println("OK IMU:APPLY DLPF <cfg> [div] [FORCE]");
+    Serial.println("OK IMU:GET LASTERR");
+    return;
+  }
+
+  if (up == "IMU:GET DLPF") {
+    uint8_t cfg = 0, div = 0;
+    if (!getDLPFConfig(cfg, div)) {
+      const char *err = getImuDlpfLastError();
+      Serial.print("ERR ");
+      Serial.println(err ? err : "GET_FAILED");
+      return;
+    }
+    Serial.printf("OK DLPF=%u SMPLRT=%u DELAY_MS=%s\n",
+                  cfg, div, dlpfDelayMsStringReply(cfg));
+    return;
+  }
+
+  if (up == "IMU:GET LASTERR") {
+    const char *err = getImuDlpfLastError();
+    Serial.printf("OK LASTERR=%s\n", err ? err : "NONE");
+    return;
+  }
+
+  // Commands with arguments: IMU:SET DLPF ... / IMU:APPLY DLPF ...
+  if (up.startsWith("IMU:SET DLPF") || up.startsWith("IMU:APPLY DLPF")) {
+    bool isApply = up.startsWith("IMU:APPLY");
+    bool force = false;
+
+    // Extract tokens from original line to preserve spacing for numbers
+    // Expected forms:
+    //  IMU:SET DLPF <cfg> [div]
+    //  IMU:APPLY DLPF <cfg> [div] [FORCE]
+    char cmd[16], keyword[16];
+    int cfg = -1;
+    int div = -1;
+    char extra[16] = {0};
+
+    int parsed = sscanf(line.c_str(), "%15s %15s %d %d %15s", cmd, keyword, &cfg, &div, extra);
+    if (parsed < 3) {
+      Serial.println("ERR BAD_PARAMS");
+      return;
+    }
+
+    // If only cfg provided, compute default divider
+    if (parsed == 3) {
+      div = (int)defaultSmplrtForDlpf((uint8_t)cfg);
+    } else if (parsed >= 5) {
+      String extraStr(extra);
+      extraStr.toUpperCase();
+      if (extraStr == "FORCE") {
+        force = true;
+      }
+    }
+
+    if (cfg < 0 || cfg > 7 || div < 0 || div > 255) {
+      Serial.println("ERR BAD_PARAMS");
+      return;
+    }
+
+    if (isApply && !force) {
+      // For APPLY, we require explicit FORCE to override safety.
+      Serial.println("ERR MOTORS_ENABLED_USE_FORCE");
+      return;
+    }
+
+    bool ok = configureDLPF((uint8_t)cfg, (uint8_t)div, force);
+    if (!ok) {
+      const char *err = getImuDlpfLastError();
+      Serial.print("ERR ");
+      Serial.println(err ? err : "CONFIG_FAILED");
+      return;
+    }
+
+    // Persist configuration so it is restored automatically on next boot.
+    if (!saveImuDlpfConfigToNvs((uint8_t)cfg, (uint8_t)div)) {
+      const char *err = getImuDlpfLastError();
+      Serial.print("ERR ");
+      Serial.println(err ? err : "NVS_SAVE_FAILED");
+      return;
+    }
+
+    Serial.printf("OK DLPF=%d SMPLRT=%d DELAY_MS=%s NOTE=ignoring_next_2_samples\n",
+                  cfg, div, dlpfDelayMsStringReply((uint8_t)cfg));
+    return;
+  }
+
+  Serial.println("ERR UNKNOWN_IMU_CMD");
 }
 
 // simplistic parser: called in loop
@@ -67,7 +205,9 @@ bool SerialBridge::poll(PIDParams &paramsOut, IMU *imu, BotController *controlle
         printHelp();
       } else if (imu != nullptr) {
         // Handle calibration commands if IMU reference provided
-        if (up == "CALIBRATE") {
+        if (up.startsWith("IMU:")) {
+          handleImuDlpfCommand(line, up, imu, controller);
+        } else if (up == "CALIBRATE") {
           if (imu->calibrateBlocking()) {
             Serial.println("OK CALIBRATE");
           } else {

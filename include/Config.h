@@ -50,6 +50,18 @@
 #define PREFS_KEY_CALIB_MAGIC        "cal_magic"
 #define PREFS_KEY_CALIB_VERSION      "cal_ver"
 
+// IMU DLPF persistence (sample-rate configuration)
+// Magic number: 0xD1PF1234
+// Origin: Distinct identifier for stored DLPF config in NVS
+// Rationale: Allows robust detection of valid DLPF configuration separate from
+//            calibration data; ensures first-boot uses library defaults until
+//            user explicitly tunes and saves DLPF via serial commands.
+#define IMU_DLPF_MAGIC 0xD1PF1234
+// NVS keys for DLPF runtime configuration
+#define PREFS_KEY_IMU_DLPF_MAGIC "dlpf_magic"
+#define PREFS_KEY_IMU_DLPF_CFG   "dlpf_cfg"
+#define PREFS_KEY_IMU_SMPLRT     "dlpf_div"
+
 
 // Steps mapping (tune later)
 #define STEPS_PER_DEGREE (3200.0f/360.0f) // ≈ 8.8888889
