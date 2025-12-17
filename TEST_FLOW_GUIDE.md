@@ -188,6 +188,66 @@ GET_CAL_INFO
 2. Check serial output on boot - should see: `IMU calibration loaded from NVS`
 3. Run `GET_CAL_INFO` - should show same offsets
 
+### Step 4.6 (Optional but Recommended): Configure IMU DLPF & Store in NVS
+Once calibration is stable, configure the MPU6050's on-chip Digital Low-Pass Filter (DLPF)
+and sample rate for a 200 Hz control loop. This is done once, then restored automatically
+from NVS on each boot.
+
+1. **Check current DLPF configuration:**
+   ```text
+   IMU:GET DLPF
+   ```
+   **Expected (before tuning):**
+   ```text
+   OK DLPF=<cfg> SMPLRT=<div> DELAY_MS=<approx>
+   ```
+
+2. **Set recommended 200 Hz settings and persist to NVS:**
+   ```text
+   IMU:SET DLPF 1 4
+   ```
+   **Expected on success:**
+   ```text
+   OK DLPF=1 SMPLRT=4 DELAY_MS=1.90 NOTE=ignoring_next_2_samples
+   ```
+   - If you see `ERR ...`, inspect the last error:
+     ```text
+     IMU:GET LASTERR
+     ```
+
+3. **Verify stored configuration:**
+   ```text
+   IMU:GET DLPF
+   ```
+   **Expected:**
+   ```text
+   OK DLPF=1 SMPLRT=4 DELAY_MS=1.90
+   ```
+
+4. **Verify persistence after reboot:**
+   - Power cycle the ESP32.
+   - On boot you should see a line similar to:
+     ```text
+     IMU: Restored DLPF from NVS (cfg=1 div=4)
+     ```
+   - You can double-check with:
+     ```text
+     IMU:GET DLPF
+     ```
+
+5. **(Advanced) Apply with FORCE while motors are running (not recommended unless you know what you're doing):**
+   ```text
+   IMU:APPLY DLPF 1 4 FORCE
+   ```
+   - If you omit `FORCE`:
+     ```text
+     IMU:APPLY DLPF 1 4
+     ```
+     you will get:
+     ```text
+     ERR MOTORS_ENABLED_USE_FORCE
+     ```
+
 ---
 
 ## Phase 5: PID Tuning (When Motors & IMU are Connected)
